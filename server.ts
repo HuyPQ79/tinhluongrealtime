@@ -69,7 +69,6 @@ app.get('/api/config', async (req, res) => {
   res.json(config);
 });
 
-// Khởi động server
 // --- PHẦN MỚI THÊM: CẤU HÌNH FRONTEND ---
 
 // 1. Cho phép server đọc các file tĩnh (CSS, JS, Ảnh...) trong thư mục hiện tại
@@ -81,6 +80,7 @@ app.get('*', (req, res) => {
 });
 
 // ----------------------------------------
+// Khởi động server
 app.listen(PORT, () => {
   console.log(`Backend HRM đang chạy tại cổng ${PORT}`);
 });
