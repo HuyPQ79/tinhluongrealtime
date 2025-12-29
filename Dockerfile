@@ -1,34 +1,34 @@
-# --- SỬ DỤNG 1 STAGE DUY NHẤT ĐỂ TRÁNH LỖI THIẾU FILE ---
+# --- SỬ DỤNG 1 STAGE (CHẮC CHẮN CHẠY) ---
 FROM node:20-slim
 
-# 1. Cài đặt thư viện hệ thống (OpenSSL cho Prisma)
+# 1. Cài đặt thư viện hệ thống
 RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# 2. Thiết lập thư mục làm việc
+# 2. Thiết lập thư mục
 WORKDIR /app
 
-# 3. Copy toàn bộ code từ GitHub vào (bao gồm cả server.cjs)
+# 3. Copy toàn bộ code
 COPY . .
 
-# 4. Xóa sạch thư mục rác (nếu lỡ dính từ Windows) để cài mới
-RUN rm -rf node_modules dist
+# 4. DỌN DẸP SẠCH SẼ (Xóa rác Windows & Lock file cũ)
+# Xóa package-lock.json để ép npm cài lại từ đầu theo chuẩn Linux
+RUN rm -rf node_modules dist package-lock.json
 
-# 5. Cài đặt thư viện (Dependencies)
+# 5. Cài đặt thư viện
 RUN npm install
 
-# 6. Tạo Prisma Client (Kết nối DB)
+# 6. Generate Database & Build Web
 RUN npx prisma generate
-
-# 7. Đóng gói giao diện React (Tạo thư mục dist)
 RUN npm run build
 
-# 8. Thiết lập biến môi trường
+# 7. Mở cổng
 ENV NODE_ENV=production
 ENV PORT=8080
-
-# 9. Mở cổng mạng
 EXPOSE 8080
 
-# 10. Lệnh khởi động server
-# (Sử dụng trực tiếp node để chạy file cjs)
-CMD ["node", "server.cjs"]
+# 8. LỆNH KHỞI ĐỘNG "THÁM TỬ" (Debug Mode)
+# Lệnh này sẽ:
+# - In ra "--- KIỂM TRA FILE ---"
+# - Liệt kê tất cả file đang có trong thư mục (ls -la)
+# - Sau đó mới thử chạy server
+CMD ["sh", "-c", "echo '--- KIỂM TRA FILE ---'; ls -la; echo '--- CHẠY SERVER ---'; node server.cjs"]
