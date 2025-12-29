@@ -1,106 +1,34 @@
 import express from 'express';
 import cors from 'cors';
-import * as path from 'path'; // SỬA LỖI 1: Import path an toàn
-import * as jwt from 'jsonwebtoken'; // SỬA LỖI 2: Dùng import thay vì require
-import * as PrismaNamespace from '@prisma/client';
+import * as path from 'path';
 
-// Log khởi động để debug
-console.log("Server đang khởi động...");
-
-// Fix: Lấy PrismaClient an toàn
-const PrismaClient = (PrismaNamespace as any).PrismaClient;
-const prisma = new PrismaClient();
+// --- LOG KHỞI ĐỘNG ---
+console.log("=== SERVER ĐANG KHỞI ĐỘNG Ở CHẾ ĐỘ SAFE MODE ===");
 
 const app = express();
-// Ép kiểu số nguyên cho PORT để tránh lỗi
 const PORT = parseInt(process.env.PORT || '8080');
-const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 
 app.use(cors());
-app.use(express.json() as any);
+app.use(express.json());
 
-// --- AUTHENTICATION ---
-app.post('/api/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-    const user = await prisma.user.findUnique({ where: { username } });
-    
-    if (user && (password === user.password)) { 
-      // Sửa lỗi dùng jwt.sign thay vì require
-      const token = jwt.sign({ id: user.id, roles: user.roles }, JWT_SECRET);
-      res.json({ success: true, token, user });
-    } else {
-      res.status(401).json({ success: false, message: 'Sai tài khoản hoặc mật khẩu' });
-    }
-  } catch (error) {
-    console.error("Lỗi đăng nhập:", error);
-    res.status(500).json({ success: false, message: 'Lỗi server' });
-  }
+// --- API TEST ĐƠN GIẢN (KHÔNG DÙNG DB) ---
+app.get('/api/ping', (req, res) => {
+  res.json({ message: "Server đang sống khỏe mạnh!", time: new Date() });
 });
 
-// --- USERS API ---
-app.get('/api/users', async (req, res) => {
-  try {
-    const users = await prisma.user.findMany();
-    res.json(users);
-  } catch(e) { res.status(500).json({error: "Lỗi lấy user"}); }
-});
-
-app.post('/api/users', async (req, res) => {
-  try {
-    const data = req.body;
-    const user = await prisma.user.upsert({
-      where: { id: data.id },
-      update: data,
-      create: data
-    });
-    res.json(user);
-  } catch(e) { res.status(500).json({error: "Lỗi lưu user"}); }
-});
-
-// --- ATTENDANCE API ---
-app.get('/api/attendance', async (req, res) => {
-  try {
-    const records = await prisma.attendanceRecord.findMany();
-    res.json(records);
-  } catch(e) { res.status(500).json({error: "Lỗi lấy chấm công"}); }
-});
-
-app.post('/api/attendance/bulk', async (req, res) => {
-  try {
-    const { records } = req.body;
-    for (const r of records) {
-      await prisma.attendanceRecord.upsert({
-        where: { id: r.id },
-        update: r,
-        create: r
-      });
-    }
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({error: "Lỗi lưu chấm công"}); }
-});
-
-// --- CONFIG API ---
-app.get('/api/config', async (req, res) => {
-  try {
-    const config = await prisma.systemConfig.findFirst();
-    res.json(config);
-  } catch(e) { res.json({}); }
-});
-
-// --- SERVE FRONTEND (Đã fix lỗi path) ---
-// Sử dụng đường dẫn tuyệt đối an toàn
+// --- PHẦN QUAN TRỌNG: PHỤC VỤ GIAO DIỆN WEB ---
+// Sử dụng đường dẫn tuyệt đối để tránh lỗi không tìm thấy file
 const staticPath = path.resolve(process.cwd());
-console.log("Đang phục vụ file tĩnh từ:", staticPath);
+console.log("Đang phục vụ file tĩnh từ thư mục:", staticPath);
 
 app.use(express.static(staticPath));
 
+// Bắt tất cả đường dẫn còn lại trả về index.html
 app.get('*', (req, res) => {
-  // Trả về file index.html cho mọi đường dẫn khác
   res.sendFile(path.join(staticPath, 'index.html'));
 });
 
-// Khởi động server
+// --- KHỞI ĐỘNG SERVER ---
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Backend HRM đang chạy tại cổng ${PORT}`);
+  console.log(`Backend HRM đã chạy thành công tại cổng ${PORT}`);
 });
