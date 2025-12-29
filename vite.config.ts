@@ -1,29 +1,32 @@
-import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'path';
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, '.', '');
+  const env = loadEnv(mode, process.cwd(), '');
   return {
-    // --- PHẦN SERVER DEV (Không ảnh hưởng Cloud Run) ---
+    // Chỉ định thư mục gốc là thư mục hiện tại
+    root: '.',
+    plugins: [react()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      },
+    },
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true,
+      // Quan trọng: Báo cho Vite biết file nhập vào là index.html ở root
+      rollupOptions: {
+        input: 'index.html',
+      }
+    },
     server: {
       port: 3000,
       host: '0.0.0.0',
     },
-    plugins: [react()],
     define: {
-      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-    },
-    resolve: {
-      alias: {
-        '@': path.resolve(__dirname, '.'),
-      }
-    },
-    // --- BỔ SUNG QUAN TRỌNG: Cấu hình Build ---
-    build: {
-      outDir: 'dist', // Bắt buộc xuất ra thư mục dist
-      emptyOutDir: true,
+      'process.env': env
     }
   };
 });
