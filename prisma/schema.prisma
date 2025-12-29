@@ -1,149 +1,181 @@
-// C?u hÏnh k?t n?i Database
-datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
-}
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
 }
 
-// --- M‘ HÃNH NGU?I DŸNG & NH¬N S? ---
-model User {
-  id                  String   @id // M„ nh‚n viÍn (vÌ d?: NV001)
-  username            String   @unique
-  password            String
-  name                String
-  avatar              String?
-  email               String?
-  phone               String?
-  joinDate            String
-  status              String   // ACTIVE, INACTIVE, PROBATION, PENDING_APPROVAL
-  roles               Json     // Luu m?ng c·c quy?n: ["ADMIN", "NHAN_SU"]
-  numberOfDependents  Int      @default(0)
-  
-  // ThÙng tin b? nhi?m hi?n t?i
-  currentDeptId       String?
-  currentPosition     String?
-  currentRankId       String?
-  currentGradeId      String?
-  currentStartDate    String?
-  
-  // C?u hÏnh luong
-  paymentType         String   @default("TIME") // TIME ho?c PIECEWORK
-  efficiencySalary    Float    @default(0)      // Luong HQ d?nh m?c
-  pieceworkUnitPrice  Float    @default(0)      // –on gi· kho·n
-  reservedBonusAmount Float    @default(0)      // Thu?ng treo nam
-  probationRate       Float    @default(100)    // % Luong th? vi?c
-
-  // Quan h?
-  assignedDeptIds     Json?    // C·c phÚng ban qu?n l˝ (cho Manager/K? to·n)
-  attendance          AttendanceRecord[]
-  salaryRecords       SalaryRecord[]
-  evaluations         EvaluationRequest[]
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
-// --- M‘ HÃNH PH“NG BAN ---
+// --- ENUMS (ƒê·∫£m b·∫£o t√≠nh nh·∫•t qu√°n d·ªØ li·ªáu) ---
+
+enum UserRole {
+  ADMIN
+  BAN_LANH_DAO
+  GIAM_DOC_KHOI
+  QUAN_LY
+  KE_TOAN_LUONG
+  NHAN_SU
+  NHAN_VIEN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  MATERNITY
+  PROBATION
+  PENDING_APPROVAL
+}
+
+enum RecordStatus {
+  DRAFT
+  PENDING
+  PENDING_MANAGER
+  PENDING_GDK
+  PENDING_BLD
+  PENDING_HR
+  APPROVED
+  REJECTED
+}
+
+enum AttendanceType {
+  TIME
+  PIECEWORK
+  DAILY
+  MODE
+  HOLIDAY
+  PAID_LEAVE
+  UNPAID
+  WAITING
+}
+
+// --- MODELS ---
+
 model Department {
-  id              String  @id
+  id              String   @id @default(cuid())
   name            String
-  blockDirectorId String?
+  budgetNorm      Decimal  @default(0) @db.Decimal(18, 2)
   managerId       String?
+  blockDirectorId String?
   hrId            String?
-  budgetNorm      Float   @default(0)
+  users           User[]   @relation("UserDepartment")
+  
+  @@map("departments")
 }
 
-// --- M‘ HÃNH CH?M C‘NG H¿NG NG¿Y ---
+model User {
+  id                   String               @id
+  username             String               @unique
+  password             String
+  name                 String
+  avatar               String?              @db.Text
+  email                String?
+  phone                String?
+  joinDate             DateTime             @default(now())
+  status               UserStatus           @default(ACTIVE)
+  roles                Json                 // L∆∞u m·∫£ng [UserRole]
+  numberOfDependents   Int                  @default(0)
+  currentDeptId        String?
+  department           Department?          @relation("UserDepartment", fields: [currentDeptId], references: [id])
+  currentPosition      String?
+  paymentType          String               @default("TIME") // TIME | PIECEWORK
+  efficiencySalary     Decimal              @default(0) @db.Decimal(18, 2)
+  pieceworkUnitPrice   Decimal              @default(0) @db.Decimal(18, 2)
+  reservedBonusAmount  Decimal              @default(0) @db.Decimal(18, 2)
+  probationRate        Int                  @default(100)
+  
+  attendanceRecords    AttendanceRecord[]
+  evaluationRequests   EvaluationRequest[]
+  salaryRecords        SalaryRecord[]
+  
+  @@index([username])
+  @@index([currentDeptId])
+  @@map("users")
+}
+
 model AttendanceRecord {
-  id                      String   @id
+  id                      String         @id
   userId                  String
-  user                    User     @relation(fields: [userId], references: [id])
-  date                    String   // –?nh d?ng YYYY-MM-DD
-  type                    String   // TIME, PIECEWORK, DAILY...
-  hours                   Float    @default(8)
-  overtimeHours           Float    @default(0)
-  otRate                  Float    @default(1.5)
-  isOvertimeWithOutput    Boolean  @default(false)
-  output                  Float?   // S?n lu?ng n?u l‡m kho·n
-  pieceworkUnitPrice      Float?
-  dailyWorkItemId         String?
-  overtimeDailyWorkItemId String?
-  status                  String   @default("DRAFT")
-  notes                   String?
+  user                    User           @relation(fields: [userId], references: [id])
+  date                    DateTime       @db.Date
+  type                    AttendanceType @default(TIME)
+  hours                   Float          @default(8)
+  overtimeHours           Float          @default(0)
+  otRate                  Float          @default(1.5)
+  isOvertimeWithOutput    Boolean        @default(false)
+  output                  Float?
+  pieceworkUnitPrice      Decimal?       @db.Decimal(18, 2)
+  status                  RecordStatus   @default(DRAFT)
+  notes                   String?        @db.Text
   sentToHrAt              DateTime?
-  rejectionReason         String?
+  rejectionReason         String?        @db.Text
+
+  // Kh√≥a t·ªï h·ª£p: M·ªôt nh√¢n vi√™n ch·ªâ c√≥ 1 b·∫£n ghi c√¥ng duy nh·∫•t m·ªói ng√†y
+  @@unique([userId, date])
+  @@index([date])
+  @@index([status])
+  @@map("attendance_records")
 }
 
-// --- M‘ HÃNH –¡NH GI¡ KPI & PH?T ---
 model EvaluationRequest {
-  id             String   @id
-  userId         String
-  user           User     @relation(fields: [userId], references: [id])
-  userName       String
-  criteriaId     String
-  criteriaName   String
-  scope          String   // MAIN_JOB, SIDE_JOB
-  target         String   // MONTHLY_SALARY, RESERVED_BONUS
-  type           String   // BONUS, PENALTY
-  points         Float
-  description    String?
-  proofFileName  String?
-  requesterId    String
-  status         String   @default("PENDING")
-  createdAt      DateTime @default(now())
-  rejectionReason String?
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id])
+  criteriaId      String
+  criteriaName    String
+  type            String       // BONUS | PENALTY
+  target          String       @default("MONTHLY_SALARY") // MONTHLY_SALARY | RESERVED_BONUS
+  points          Float
+  description     String?      @db.Text
+  proofFileName   String?
+  requesterId     String
+  status          RecordStatus @default(PENDING)
+  createdAt       DateTime     @default(now())
+  rejectionReason String?      @db.Text
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("evaluation_requests")
 }
 
-// --- M‘ HÃNH B?NG LUONG TH¡NG (SNAPSHOT) ---
 model SalaryRecord {
-  id                 String @id
-  userId             String
-  user               User   @relation(fields: [userId], references: [id])
-  userName           String
-  date               String // –?nh d?ng YYYY-MM
-  status             String
+  id                    String       @id
+  userId                String
+  user                  User         @relation(fields: [userId], references: [id])
+  date                  String       // YYYY-MM
+  status                RecordStatus @default(DRAFT)
   
-  // C·c bi?n s? tÌnh to·n
-  actualBaseSalary   Float
-  actualEfficiencySalary Float
-  actualPieceworkSalary  Float
-  otherSalary        Float
-  totalAllowance     Float
-  totalBonus         Float
-  overtimeSalary     Float
+  // C√°c ch·ªâ s·ªë snapshot l√∫c t√≠nh l∆∞∆°ng
+  actualBaseSalary      Decimal      @db.Decimal(18, 2)
+  actualEfficiencySalary Decimal     @db.Decimal(18, 2)
+  actualPieceworkSalary Decimal      @db.Decimal(18, 2)
+  totalAllowance        Decimal      @db.Decimal(18, 2)
+  totalBonus            Decimal      @db.Decimal(18, 2)
+  insuranceDeduction    Decimal      @db.Decimal(18, 2)
+  pitDeduction          Decimal      @db.Decimal(18, 2)
+  advancePayment        Decimal      @db.Decimal(18, 2)
+  netSalary             Decimal      @db.Decimal(18, 2)
   
-  // Kh?u tr?
-  insuranceDeduction Float
-  pitDeduction       Float
-  unionFee           Float
-  advancePayment     Float
-  otherDeductions    Float
-  
-  // K?t qu? cu?i
-  netSalary          Float
-  calculationLog     String? @db.LongText // Luu JSON chi ti?t c·ch tÌnh
-  adjustments        Json?                // C·c kho?n di?u ch?nh tay
-  lastUpdated        DateTime @default(now())
+  calculationLog        Json?        // L∆∞u chi ti·∫øt c√¥ng th·ª©c ƒë√£ √°p d·ª•ng
+  lastUpdated           DateTime     @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+  @@map("salary_records")
 }
 
-// --- C?U HÃNH H? TH?NG ---
-model SystemConfig {
-  id                 Int     @id @default(1)
-  isPeriodLocked     Boolean @default(false)
-  approvalMode       String  @default("POST_AUDIT")
-  personalRelief     Float   @default(11000000)
-  dependentRelief    Float   @default(4400000)
-  insuranceRate      Float   @default(10.5)
-  unionFeeRate       Float   @default(1)
-  maxInsuranceBase   Float   @default(36000000)
-  approvalWorkflow   Json?   // C?u hÏnh c·c bu?c duy?t d?ng
-}
-
-// --- NH?T K› H? TH?NG ---
 model AuditLog {
-  id        String   @id @default(cuid())
-  action    String
-  actor     String
-  timestamp DateTime @default(now())
-  details   String   @db.Text
+  id             String   @id @default(cuid())
+  action         String
+  actor          String
+  timestamp      DateTime @default(now())
+  details        String   @db.Text
+  isConfigAction Boolean  @default(false)
+
+  @@index([timestamp])
+  @@map("audit_logs")
 }
