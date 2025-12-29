@@ -1,10 +1,8 @@
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
-// Fix: Use a more flexible import for Prisma Namespace
+import path from 'path'; // <--- MỚI THÊM: Để xử lý đường dẫn file
 import * as PrismaNamespace from '@prisma/client';
 
-// Fix: Access PrismaClient dynamically to bypass potential generation errors in some environments
 const PrismaClient = (PrismaNamespace as any).PrismaClient;
 const prisma = new PrismaClient();
 
@@ -13,15 +11,14 @@ const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 
 app.use(cors());
-// Fix: Cast express.json() to any or RequestHandler to fix overload matching error
 app.use(express.json() as any);
 
 // --- AUTHENTICATION ---
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   const user = await prisma.user.findUnique({ where: { username } });
-  
-  if (user && (password === user.password)) { // Đơn giản hóa cho người mới, sau này nên dùng bcrypt
+   
+  if (user && (password === user.password)) { 
     const token = (require('jsonwebtoken')).sign({ id: user.id, roles: user.roles }, JWT_SECRET);
     res.json({ success: true, token, user });
   } else {
@@ -69,17 +66,16 @@ app.get('/api/config', async (req, res) => {
   res.json(config);
 });
 
-// --- PHẦN MỚI THÊM: CẤU HÌNH FRONTEND ---
-
-// 1. Cho phép server đọc các file tĩnh (CSS, JS, Ảnh...) trong thư mục hiện tại
+// --- PHẦN MỚI THÊM: SERVE FRONTEND ---
+// Bước 1: Cho phép truy cập file tĩnh (HTML, JS, CSS)
 app.use(express.static(path.join(process.cwd())));
 
-// 2. Với mọi đường dẫn không phải API, trả về file index.html
+// Bước 2: Bắt tất cả các đường dẫn còn lại để trả về index.html
 app.get('*', (req, res) => {
   res.sendFile(path.join(process.cwd(), 'index.html'));
 });
+// -------------------------------------
 
-// ----------------------------------------
 // Khởi động server
 app.listen(PORT, () => {
   console.log(`Backend HRM đang chạy tại cổng ${PORT}`);
