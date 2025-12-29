@@ -1,0 +1,26 @@
+# Sử dụng Node.js bản rút gọn
+FROM node:20-slim
+
+# Cài đặt OpenSSL cho Prisma
+RUN apt-get update -y && apt-get install -y openssl libssl-dev ca-certificates
+
+WORKDIR /app
+
+# Sao chép file cấu hình
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Cài đặt thư viện
+RUN npm install
+
+# Sao chép toàn bộ code
+COPY . .
+
+# Khởi tạo Prisma Client
+RUN npx prisma generate
+
+# Cloud Run yêu cầu ứng dụng lắng nghe trên cổng 8080 (mặc định)
+EXPOSE 8080
+
+# Chạy server
+CMD ["npx", "tsx", "server.ts"]
