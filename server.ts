@@ -1,4 +1,4 @@
-
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 // Fix: Use a more flexible import for Prisma Namespace
@@ -70,6 +70,17 @@ app.get('/api/config', async (req, res) => {
 });
 
 // Khởi động server
+// --- PHẦN MỚI THÊM: CẤU HÌNH FRONTEND ---
+
+// 1. Cho phép server đọc các file tĩnh (CSS, JS, Ảnh...) trong thư mục hiện tại
+app.use(express.static(path.join(process.cwd())));
+
+// 2. Với mọi đường dẫn không phải API, trả về file index.html
+app.get('*', (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'index.html'));
+});
+
+// ----------------------------------------
 app.listen(PORT, () => {
   console.log(`Backend HRM đang chạy tại cổng ${PORT}`);
 });
