@@ -2,7 +2,10 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "native" để chạy trên máy local của bạn
+  // "debian-openssl-3.0.x" là chuẩn cho node:20 (Debian Bookworm)
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
