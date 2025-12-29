@@ -41,4 +41,4 @@ COPY --from=builder /app .
 EXPOSE 8080
 
 # Lệnh chạy server
-CMD ["npx", "tsx", "server.ts"]
+CMD ["node", "server.cjs"]
