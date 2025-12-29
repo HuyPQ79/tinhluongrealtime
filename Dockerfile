@@ -1,44 +1,48 @@
-# --- Stage 1: Build & Generate Prisma ---
+# --- Stage 1: Build Frontend & Backend Deps ---
 FROM node:20-slim AS builder
 
-# Cài đặt OpenSSL (Cần thiết cho Prisma hoạt động)
+# Cài đặt OpenSSL
 RUN apt-get update -y && apt-get install -y openssl ca-certificates
 
 WORKDIR /app
 
-# Copy file cấu hình trước để cài thư viện (Tận dụng Cache giúp build nhanh hơn)
+# Copy file cấu hình
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Cài đặt thư viện
+# Cài đặt toàn bộ thư viện (bao gồm cả Vite để build)
 RUN npm install
 
-# Copy TOÀN BỘ code từ máy vào Docker
+# Copy toàn bộ code
 COPY . .
 
-# Tạo Prisma Client (Lúc này file schema.prisma đã được copy vào nên sẽ không bị lỗi nữa)
+# 1. Tạo Prisma Client
 RUN npx prisma generate
 
-# --- Stage 2: Runtime (Chạy ứng dụng nhẹ hơn) ---
+# 2. QUAN TRỌNG: Chạy lệnh build giao diện (Tạo ra thư mục dist)
+RUN npm run build
+
+# --- Stage 2: Runtime ---
 FROM node:20-slim AS runner
 
-# Cài OpenSSL cho môi trường chạy
 RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Thiết lập biến môi trường cơ bản
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# COPY từ builder sang runner
-# 1. Copy thư viện đã cài
+# Copy các thư viện cần thiết
 COPY --from=builder /app/node_modules ./node_modules
-# 2. Copy toàn bộ code ứng dụng (An toàn hơn là copy từng file)
-COPY --from=builder /app .
+# Copy Prisma Client đã tạo
+COPY --from=builder /app/prisma ./prisma
+# Copy file chạy server
+COPY --from=builder /app/server.cjs ./
+COPY --from=builder /app/package.json ./
 
-# Mở cổng 8080
+# QUAN TRỌNG: Copy thư mục 'dist' (Giao diện đã build) sang đây
+COPY --from=builder /app/dist ./dist
+
 EXPOSE 8080
 
-# Lệnh chạy server
 CMD ["node", "server.cjs"]
