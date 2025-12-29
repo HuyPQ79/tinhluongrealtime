@@ -49,12 +49,15 @@ app.get('/api/ping', (req, res) => {
 });
 
 // --- SERVE FRONTEND ---
-const staticPath = path.join(process.cwd());
+// SỬA DÒNG NÀY: Trỏ vào thư mục 'dist' (nơi chứa code React đã build)
+const staticPath = path.join(process.cwd(), 'dist'); 
+
 console.log("Phục vụ file tĩnh tại:", staticPath);
 
 app.use(express.static(staticPath));
 
 app.get('*', (req, res) => {
+  // SỬA DÒNG NÀY: Trỏ vào file index.html nằm trong dist
   res.sendFile(path.join(staticPath, 'index.html'));
 });
 
