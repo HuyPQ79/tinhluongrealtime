@@ -1,34 +1,30 @@
-# --- SỬ DỤNG 1 STAGE (CHẮC CHẮN CHẠY) ---
+# Sử dụng Node 20
 FROM node:20-slim
 
-# 1. Cài đặt thư viện hệ thống
-RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+# Cài OpenSSL (cần cho Prisma)
+RUN apt-get update -y && apt-get install -y openssl ca-certificates
 
-# 2. Thiết lập thư mục
 WORKDIR /app
 
-# 3. Copy toàn bộ code
+# Copy toàn bộ code vào
 COPY . .
 
-# 4. DỌN DẸP SẠCH SẼ (Xóa rác Windows & Lock file cũ)
-# Xóa package-lock.json để ép npm cài lại từ đầu theo chuẩn Linux
-RUN rm -rf node_modules dist package-lock.json
-
-# 5. Cài đặt thư viện
+# 1. Cài đặt thư viện
 RUN npm install
 
-# 6. Generate Database & Build Web
+# 2. Tạo Prisma Client
 RUN npx prisma generate
+
+# 3. QUAN TRỌNG: BUILD GIAO DIỆN REACT
+# Lệnh này sẽ tạo ra thư mục 'dist' chứa file index.html và js "chín"
 RUN npm run build
 
-# 7. Mở cổng
+# Thiết lập biến môi trường
 ENV NODE_ENV=production
 ENV PORT=8080
+
+# Mở cổng
 EXPOSE 8080
 
-# 8. LỆNH KHỞI ĐỘNG "THÁM TỬ" (Debug Mode)
-# Lệnh này sẽ:
-# - In ra "--- KIỂM TRA FILE ---"
-# - Liệt kê tất cả file đang có trong thư mục (ls -la)
-# - Sau đó mới thử chạy server
-CMD ["sh", "-c", "echo '--- KIỂM TRA FILE ---'; ls -la; echo '--- CHẠY SERVER ---'; node server.cjs"]
+# Chạy server bằng tsx (như mong muốn của bạn)
+CMD ["npx", "tsx", "server.ts"]
