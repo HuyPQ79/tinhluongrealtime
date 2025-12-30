@@ -2,96 +2,108 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
-import * as PrismaNamespace from '@prisma/client';
-import bcrypt from 'bcryptjs'; // Cần import thư viện mã hóa
+import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs'; // Thư viện mã hóa mật khẩu
+import jwt from 'jsonwebtoken'; // Thư viện tạo token
 
-// Fix: Khởi tạo Prisma an toàn
-const PrismaClient = (PrismaNamespace as any).PrismaClient;
-const prisma = new PrismaClient();
+// --- KHỞI TẠO SERVER ---
+console.log("=== SERVER ĐANG KHỞI ĐỘNG (CHẾ ĐỘ PRODUCTION) ===");
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '8080');
 const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 
-app.use(cors());
-app.use(express.json() as any);
+const prisma = new PrismaClient();
 
-// --- 1. API ĐĂNG NHẬP (CƠ CHẾ HYBRID: Hỗ trợ cả cũ và mới) ---
+app.use(cors());
+app.use(express.json());
+
+// --- 1. API ĐĂNG NHẬP (QUAN TRỌNG: FIX LỖI LOGIN) ---
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    console.log(`[LOGIN] Đang thử đăng nhập: ${username}`);
+    console.log(`[LOGIN] Đang kiểm tra user: ${username}`);
 
     const user = await prisma.user.findUnique({ where: { username } });
 
     if (!user) {
-      console.log(`[LOGIN] User không tồn tại: ${username}`);
-      return res.status(401).json({ success: false, message: 'Sai tài khoản' });
+      return res.status(401).json({ success: false, message: 'Tài khoản không tồn tại' });
     }
 
-    // Kiểm tra mật khẩu: Thử cả 2 cách (Mã hóa & Không mã hóa)
+    // --- LOGIC KIỂM TRA MẬT KHẨU THÔNG MINH (HYBRID) ---
     let isMatch = false;
-    
-    // Cách 1: So sánh nếu mật khẩu trong DB đã được mã hóa (Bcrypt)
+
+    // Trường hợp 1: User mới (Mật khẩu đã mã hóa bằng Bcrypt - bắt đầu bằng $2...)
     if (user.password.startsWith('$2')) {
         isMatch = await bcrypt.compare(password, user.password);
     } 
-    // Cách 2: So sánh thô (Dành cho user cũ/demo chưa mã hóa)
+    // Trường hợp 2: User cũ/Demo (Mật khẩu dạng chữ thường 123456)
     else {
         isMatch = (password === user.password);
     }
 
     if (isMatch) {
       console.log(`[LOGIN] Thành công: ${username}`);
-      const jwt = require('jsonwebtoken');
+      // Tạo Token
       const token = jwt.sign({ id: user.id, roles: user.roles }, JWT_SECRET);
-      // Trả về thông tin user (loại bỏ password)
-      const { password: _, ...userWithoutPass } = user;
-      res.json({ success: true, token, user: userWithoutPass });
+      
+      // Trả về user (nhưng giấu mật khẩu đi)
+      const { password: _, ...userData } = user;
+      res.json({ success: true, token, user: userData });
     } else {
       console.log(`[LOGIN] Sai mật khẩu: ${username}`);
       res.status(401).json({ success: false, message: 'Sai mật khẩu' });
     }
   } catch (error) {
-    console.error("[LOGIN] Lỗi server:", error);
-    res.status(500).json({ success: false, message: 'Lỗi server' });
+    console.error("[LOGIN] Lỗi:", error);
+    res.status(500).json({ success: false, message: 'Lỗi server khi đăng nhập' });
   }
 });
 
-// --- 2. API QUẢN LÝ USER (Tự động mã hóa pass khi tạo/sửa) ---
+// --- 2. API QUẢN LÝ USER (TỰ ĐỘNG MÃ HÓA PASSWORD) ---
 app.get('/api/users', async (req, res) => {
-    try {
-        const users = await prisma.user.findMany();
-        res.json(users);
-    } catch(e) { res.status(500).json({error: "Lỗi lấy danh sách user"}); }
+  try {
+    const users = await prisma.user.findMany();
+    // Ẩn mật khẩu khi trả về danh sách
+    const safeUsers = users.map(u => {
+      const { password, ...rest } = u;
+      return rest;
+    });
+    res.json(safeUsers);
+  } catch (e) { res.status(500).json({ error: "Lỗi lấy danh sách user" }); }
 });
 
 app.post('/api/users', async (req, res) => {
   try {
     const data = req.body;
-    console.log(`[USER] Đang lưu user: ${data.username}`);
+    console.log(`[USER] Đang tạo/sửa user: ${data.username}`);
 
-    // Nếu có đổi mật khẩu thì mã hóa, không thì thôi
+    // LOGIC QUAN TRỌNG: Nếu có nhập mật khẩu mới -> Mã hóa ngay
     if (data.password && data.password.trim() !== "") {
-        data.password = await bcrypt.hash(data.password, 10);
+        const salt = await bcrypt.genSalt(10);
+        data.password = await bcrypt.hash(data.password, salt);
     } else {
-        // Nếu không gửi pass (khi edit), xóa trường password để không bị ghi đè thành rỗng
+        // Nếu edit mà không nhập pass thì xóa trường này để không bị ghi đè thành rỗng
         delete data.password;
     }
 
     const user = await prisma.user.upsert({
-      where: { id: data.id || "new_id_" + Date.now() }, // Fallback nếu thiếu ID
+      where: { id: data.id || "new_" + Date.now() },
       update: data,
-      create: data
+      create: {
+        ...data,
+        id: data.id || "user_" + Date.now() // Đảm bảo luôn có ID khi tạo mới
+      }
     });
+    
     res.json(user);
-  } catch(e) { 
-      console.error("[USER] Lỗi lưu user:", e);
-      res.status(500).json({error: "Lỗi lưu user"}); 
+  } catch (e) { 
+    console.error("[USER] Lỗi lưu user:", e);
+    res.status(500).json({ error: "Không thể lưu user. Có thể trùng ID hoặc Username." }); 
   }
 });
 
-// --- 3. CÁC API KHÁC (GIỮ NGUYÊN) ---
+// --- 3. CÁC API PHỤ TRỢ KHÁC ---
 app.get('/api/config', async (req, res) => {
   try {
     const config = await prisma.systemConfig.findFirst();
@@ -99,31 +111,32 @@ app.get('/api/config', async (req, res) => {
   } catch(e) { res.json({}); }
 });
 
-// API Ping Healthcheck
 app.get('/api/ping', (req, res) => {
-  res.json({ status: "OK", time: new Date() });
+  res.json({ status: "OK", message: "Server HRM đang chạy ổn định!" });
 });
 
-
-// --- 4. PHỤC VỤ GIAO DIỆN (ĐÃ FIX MÀN HÌNH TRẮNG) ---
+// --- 4. PHỤC VỤ GIAO DIỆN (ĐÃ TỐI ƯU CHO CLOUD RUN) ---
+// Trỏ thẳng vào thư mục 'dist' nơi chứa code React đã build
 const distPath = path.join(process.cwd(), 'dist');
 
 if (fs.existsSync(distPath)) {
-  console.log("--> [FRONTEND] Đã tìm thấy thư mục 'dist'. Đang phục vụ...");
+  console.log(`[STATIC] Đang phục vụ giao diện từ: ${distPath}`);
   app.use(express.static(distPath));
 } else {
-  console.log("--> [FRONTEND] CẢNH BÁO: Không tìm thấy thư mục 'dist'!");
+  console.error("[STATIC] CẢNH BÁO: Không tìm thấy thư mục 'dist'!");
 }
 
+// Bắt mọi route còn lại để trả về index.html (Hỗ trợ React Router)
 app.get('*', (req, res) => {
-  if (fs.existsSync(path.join(distPath, 'index.html'))) {
-    res.sendFile(path.join(distPath, 'index.html'));
+  const indexPath = path.join(distPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
   } else {
-    res.send('Server đang chạy nhưng chưa tìm thấy giao diện (Thư mục dist thiếu). Vui lòng kiểm tra lại Log Build.');
+    res.status(404).send('<h1>Server Backend đang chạy.</h1><p>Nhưng chưa thấy giao diện Frontend (folder dist). Vui lòng kiểm tra lại log Build.</p>');
   }
 });
 
 // --- KHỞI ĐỘNG ---
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Backend HRM đang chạy tại cổng ${PORT}`);
+  console.log(`✅ Backend HRM đã sẵn sàng tại cổng ${PORT}`);
 });
