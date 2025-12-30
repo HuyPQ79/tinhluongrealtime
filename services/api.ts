@@ -1,160 +1,221 @@
-
 import { 
-    INITIAL_USERS, 
-    INITIAL_DEPARTMENTS, 
-    INITIAL_RECORDS, 
-    INITIAL_LOGS, 
-    INITIAL_FORMULAS, 
-    INITIAL_CRITERIA, 
-    INITIAL_SALARY_VARIABLES, 
-    INITIAL_RANKS, 
-    INITIAL_GRADES, 
-    INITIAL_HOLIDAY_POLICIES 
-} from './mockData';
+    User, Department, SalaryRecord, AttendanceRecord, SystemConfig, 
+    SalaryFormula, SalaryVariable, Criterion, CriterionGroup, 
+    PieceworkConfig, SalaryRank, SalaryGrade, BonusType, AnnualBonusPolicy, 
+    AuditLog, EvaluationRequest 
+} from './types'; // QUAN TRỌNG: Dùng ./types vì file nằm cùng thư mục gốc
 
-const STORAGE_KEYS = {
-    USERS: 'HRM_USERS',
-    DEPARTMENTS: 'HRM_DEPARTMENTS',
-    RECORDS: 'HRM_RECORDS',
-    LOGS: 'HRM_LOGS',
-    FORMULAS: 'HRM_FORMULAS',
-    CRITERIA: 'HRM_CRITERIA',
-    VARIABLES: 'HRM_VARIABLES',
-    RANKS: 'HRM_RANKS',
-    GRIDS: 'HRM_GRIDS',
-    HOLIDAYS: 'HRM_HOLIDAYS'
-};
+// --- CẤU HÌNH ĐƯỜNG DẪN API ---
+// Khi build (Production), Vite sẽ đặt biến PROD = true -> Dùng đường dẫn tương đối /api
+// Khi dev (Development), dùng đường dẫn tuyệt đối tới port 8080
+const IS_PROD = import.meta.env.PROD;
+const API_BASE = IS_PROD ? '/api' : 'http://localhost:8080/api';
 
-// Helper to simulate async delay for realistic feel (optional, kept short)
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+console.log(`[API] Đang kết nối tới: ${API_BASE}`);
 
-// Helper to read/write
-const getStorage = (key: string, defaultVal: any) => {
+// --- HELPER: Gửi Request có kèm Token ---
+const request = async (endpoint: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem('HRM_TOKEN');
+    
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...options.headers,
+    };
+
     try {
-        const item = localStorage.getItem(key);
-        return item ? JSON.parse(item) : defaultVal;
-    } catch (e) {
-        console.error(`Error reading ${key} from LS`, e);
-        return defaultVal;
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+            ...options,
+            headers,
+        });
+
+        if (!response.ok) {
+            // Nếu lỗi 401 (Hết phiên đăng nhập) -> Đá về login
+            if (response.status === 401) {
+                console.warn("[API] Phiên đăng nhập hết hạn. Đang đăng xuất...");
+                localStorage.removeItem('HRM_TOKEN');
+                localStorage.removeItem('HRM_USER');
+                // Reload trang để về màn hình login (React Router sẽ xử lý việc redirect)
+                window.location.href = '/'; 
+            }
+            throw new Error(`API Error: ${response.statusText}`);
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error(`[API FAIL] ${endpoint}:`, error);
+        throw error;
     }
 };
 
-const setStorage = (key: string, val: any) => {
-    localStorage.setItem(key, JSON.stringify(val));
-};
-
 export const api = {
-    async fetchInitialData() {
-        await delay(300); // Simulate network latency
-
-        // Initialize data if not present
-        const users = getStorage(STORAGE_KEYS.USERS, INITIAL_USERS);
-        const departments = getStorage(STORAGE_KEYS.DEPARTMENTS, INITIAL_DEPARTMENTS);
-        const salaryRecords = getStorage(STORAGE_KEYS.RECORDS, INITIAL_RECORDS);
-        const auditLogs = getStorage(STORAGE_KEYS.LOGS, INITIAL_LOGS);
-        
-        // Configs
-        const formulas = getStorage(STORAGE_KEYS.FORMULAS, INITIAL_FORMULAS);
-        const criteria = getStorage(STORAGE_KEYS.CRITERIA, INITIAL_CRITERIA);
-        const variables = getStorage(STORAGE_KEYS.VARIABLES, INITIAL_SALARY_VARIABLES);
-        const ranks = getStorage(STORAGE_KEYS.RANKS, INITIAL_RANKS);
-        const grids = getStorage(STORAGE_KEYS.GRIDS, INITIAL_GRADES);
-        const holidays = getStorage(STORAGE_KEYS.HOLIDAYS, INITIAL_HOLIDAY_POLICIES);
-
-        // Ensure data persists initially if it was empty
-        if (!localStorage.getItem(STORAGE_KEYS.USERS)) setStorage(STORAGE_KEYS.USERS, users);
-        if (!localStorage.getItem(STORAGE_KEYS.DEPARTMENTS)) setStorage(STORAGE_KEYS.DEPARTMENTS, departments);
-        if (!localStorage.getItem(STORAGE_KEYS.RECORDS)) setStorage(STORAGE_KEYS.RECORDS, salaryRecords);
-        if (!localStorage.getItem(STORAGE_KEYS.FORMULAS)) setStorage(STORAGE_KEYS.FORMULAS, formulas);
-
-        return {
-            users,
-            departments,
-            salaryRecords,
-            auditLogs, // AppContext expects 'auditLogs' or map appropriately
-            configs: {
-                formulas,
-                criteria,
-                variables,
-                ranks,
-                grids,
-                holidays
+    // ==================================================
+    // 1. AUTHENTICATION (Đăng nhập)
+    // ==================================================
+    async login(username: string, password: string): Promise<User | null> {
+        try {
+            const res = await fetch(`${API_BASE}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    // Lưu Token và User vào LocalStorage để App dùng
+                    localStorage.setItem('HRM_TOKEN', data.token);
+                    localStorage.setItem('HRM_USER', JSON.stringify(data.user));
+                    return data.user;
+                }
             }
-        };
+            return null;
+        } catch (e) {
+            console.error("Lỗi đăng nhập:", e);
+            return null;
+        }
     },
 
-    async saveUser(user: any) {
-        await delay(100);
-        const users = getStorage(STORAGE_KEYS.USERS, []);
-        const idx = users.findIndex((u: any) => u.id === user.id);
-        if (idx > -1) {
-            users[idx] = user;
-        } else {
-            users.push(user);
-        }
-        setStorage(STORAGE_KEYS.USERS, users);
-        return { success: true };
+    async logout() {
+        localStorage.removeItem('HRM_TOKEN');
+        localStorage.removeItem('HRM_USER');
     },
-    
+
+    // ==================================================
+    // 2. USER & DEPARTMENT MANAGEMENT
+    // ==================================================
+    async getUsers() {
+        return await request('/users');
+    },
+
+    async saveUser(user: User) {
+        return await request('/users', {
+            method: 'POST',
+            body: JSON.stringify(user)
+        });
+    },
+
     async deleteUser(id: string) {
-        await delay(100);
-        const users = getStorage(STORAGE_KEYS.USERS, []);
-        const newUsers = users.filter((u: any) => u.id !== id);
-        setStorage(STORAGE_KEYS.USERS, newUsers);
-        return { success: true };
+        return await request(`/users/${id}`, { method: 'DELETE' });
     },
 
-    async saveDepartment(dept: any) {
-        await delay(100);
-        const depts = getStorage(STORAGE_KEYS.DEPARTMENTS, []);
-        const idx = depts.findIndex((d: any) => d.id === dept.id);
-        if (idx > -1) depts[idx] = dept;
-        else depts.push(dept);
-        setStorage(STORAGE_KEYS.DEPARTMENTS, depts);
-        return { success: true };
+    async getDepartments() {
+        return await request('/departments');
     },
 
-    async saveRecord(record: any) {
-        await delay(200); // Simulate processing
-        const records = getStorage(STORAGE_KEYS.RECORDS, []);
-        const idx = records.findIndex((r: any) => r.id === record.id);
-        if (idx > -1) records[idx] = record;
-        else records.push(record);
-        setStorage(STORAGE_KEYS.RECORDS, records);
-        return { success: true };
+    async saveDepartment(dept: Department) {
+        return await request('/departments', {
+            method: 'POST',
+            body: JSON.stringify(dept)
+        });
     },
+
+    async deleteDepartment(id: string) {
+        return await request(`/departments/${id}`, { method: 'DELETE' });
+    },
+
+    // ==================================================
+    // 3. ATTENDANCE (Chấm công)
+    // ==================================================
+    async getAttendance(month?: string) {
+        const query = month ? `?month=${month}` : '';
+        return await request(`/attendance${query}`);
+    },
+
+    async saveAttendance(data: AttendanceRecord | AttendanceRecord[]) {
+        return await request('/attendance', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        });
+    },
+
+    // ==================================================
+    // 4. SALARY RECORDS (Bảng lương)
+    // ==================================================
+    async getSalaryRecords(month?: string) {
+        const query = month ? `?month=${month}` : '';
+        return await request(`/salary-records${query}`);
+    },
+
+    async saveSalaryRecord(record: SalaryRecord) {
+        return await request('/salary-records', {
+            method: 'POST',
+            body: JSON.stringify(record)
+        });
+    },
+
+    // ==================================================
+    // 5. CONFIGURATION & MASTER DATA
+    // ==================================================
     
-    async deleteRecord(id: string) {
-        await delay(100);
-        const records = getStorage(STORAGE_KEYS.RECORDS, []);
-        const newRecords = records.filter((r: any) => r.id !== id);
-        setStorage(STORAGE_KEYS.RECORDS, newRecords);
-        return { success: true };
+    async getSystemConfig() {
+        return await request('/config/system');
     },
 
+    // Hàm saveConfig đa năng (Xử lý mapping sang các API riêng biệt)
     async saveConfig(key: string, data: any) {
-        await delay(100);
-        let storageKey = '';
-        switch(key) {
-            case 'formulas': storageKey = STORAGE_KEYS.FORMULAS; break;
-            case 'criteria': storageKey = STORAGE_KEYS.CRITERIA; break;
-            case 'variables': storageKey = STORAGE_KEYS.VARIABLES; break;
-            case 'ranks': storageKey = STORAGE_KEYS.RANKS; break;
-            case 'grids': storageKey = STORAGE_KEYS.GRIDS; break;
-            case 'holidays': storageKey = STORAGE_KEYS.HOLIDAYS; break;
-            default: return { success: false, message: 'Invalid config key' };
+        try {
+            // Mapping key từ AppContext sang API Endpoint
+            let endpoint = '';
+            switch(key) {
+                case 'formulas': endpoint = '/formulas'; break;
+                case 'criteria': endpoint = '/criteria/items'; break;
+                case 'groups':   endpoint = '/criteria/groups'; break;
+                case 'variables':endpoint = '/variables'; break;
+                case 'ranks':    endpoint = '/ranks'; break;
+                case 'piecework':endpoint = '/piecework-configs'; break;
+                case 'holidays': endpoint = '/holidays'; break;
+                case 'bonusTypes': endpoint = '/bonus-types'; break;
+                case 'annualPolicies': endpoint = '/bonus-policies'; break;
+                case 'dailyWork': endpoint = '/daily-work-items'; break;
+                case 'system':    
+                    // System config là object đơn, không phải mảng
+                    return await request('/config/system', { method: 'POST', body: JSON.stringify(data) });
+                default: 
+                    console.warn(`Unknown config key: ${key}`);
+                    return { success: false };
+            }
+
+            // XỬ LÝ MẢNG DỮ LIỆU:
+            if (Array.isArray(data)) {
+                // Gửi song song các request để tối ưu tốc độ
+                await Promise.all(data.map(item => 
+                    request(endpoint, { method: 'POST', body: JSON.stringify(item) })
+                ));
+            } else {
+                // Nếu gửi 1 object
+                await request(endpoint, { method: 'POST', body: JSON.stringify(data) });
+            }
+            
+            return { success: true };
+        } catch (e) {
+            console.error(`Save config failed [${key}]:`, e);
+            return { success: false };
         }
-        setStorage(storageKey, data);
-        return { success: true };
     },
-    
-    async saveLog(log: any) {
-        // Logs are append-only usually, but here we replace for simplicity or append
-        const logs = getStorage(STORAGE_KEYS.LOGS, []);
-        logs.unshift(log); // Add to beginning
-        // Limit logs to last 500 to prevent LS overflow
-        if (logs.length > 500) logs.pop();
-        setStorage(STORAGE_KEYS.LOGS, logs);
-        return { success: true };
+
+    // ==================================================
+    // 6. LOGS & EVALUATIONS (Nhật ký & Đánh giá)
+    // ==================================================
+    async getLogs() {
+        return await request('/audit');
+    },
+
+    async saveLog(log: AuditLog) {
+        return await request('/audit', {
+            method: 'POST',
+            body: JSON.stringify(log)
+        });
+    },
+
+    async getEvaluations() {
+        return await request('/evaluations');
+    },
+
+    async saveEvaluation(requestData: EvaluationRequest) {
+        return await request('/evaluations', {
+            method: 'POST',
+            body: JSON.stringify(requestData)
+        });
     }
 };

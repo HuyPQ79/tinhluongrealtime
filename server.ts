@@ -1,205 +1,329 @@
-
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
 import { PrismaClient } from '@prisma/client';
-import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
-// Cấu hình Prisma tối ưu cho Cloud Run (Connection Pooling)
-const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL,
-    },
-  },
-  log: ['error'],
+// --- 1. GÀI BẪY BẮT LỖI (CRITICAL ERROR TRAP) ---
+// Giúp server không bị crash im lặng, mà sẽ in lỗi ra log
+process.on('uncaughtException', (err) => {
+  console.error('🔥 LỖI CHẾT NGƯỜI (Uncaught Exception):', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🔥 LỖI PROMISE (Unhandled Rejection):', reason);
 });
 
+console.log("=== SERVER ĐANG KHỞI ĐỘNG (FULL VERSION) ===");
+
 const app = express();
-const PORT = process.env.PORT || 8080;
-const JWT_SECRET = process.env.JWT_SECRET || 'hrm-enterprise-v3-2025-secure-key';
+// Ép kiểu số cho PORT
+const PORT = parseInt(process.env.PORT || '8080');
+const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
+const prisma = new PrismaClient();
+
+// === 2. TỰ ĐỘNG KHỞI TẠO DATABASE ===
+async function initDatabase() {
+  try {
+    console.log("--> [DB] Đang kiểm tra kết nối...");
+    // Thử query nhẹ để xem DB sống không
+    await prisma.$queryRaw`SELECT 1`;
+    console.log("--> [DB] Kết nối Database thành công.");
+    
+    // Tự động tạo System Config mặc định nếu chưa có
+    const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
+    if (!config) {
+      console.log("--> [DB] Đang tạo cấu hình hệ thống mặc định...");
+      await prisma.systemConfig.create({
+        data: {
+          id: "default_config",
+          baseSalary: 1800000,
+          standardWorkDays: 26,
+          insuranceBaseSalary: 1800000,
+          maxInsuranceBase: 36000000
+        }
+      });
+    }
+
+    // Tự động tạo Admin mặc định nếu chưa có user nào
+    const userCount = await prisma.user.count();
+    if (userCount === 0) {
+       console.log("--> [DB] Đang tạo tài khoản Admin mặc định (admin/123)...");
+       const salt = await bcrypt.genSalt(10);
+       const hashedPassword = await bcrypt.hash("123", salt);
+       await prisma.user.create({
+         data: {
+           id: "admin_01",
+           username: "admin",
+           password: hashedPassword,
+           name: "Administrator",
+           roles: ["ADMIN"],
+           status: "ACTIVE"
+         }
+       });
+    }
+
+  } catch (e) {
+    console.error("--> [DB LỖI] Không thể kết nối DB (Server vẫn sẽ chạy tiếp để phục vụ Web). Lỗi:", e);
+  }
+}
+
+// Gọi hàm này ngay khi server start
+initDatabase();
 
 app.use(cors());
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '10mb' }));
 
-// Middleware Xác thực & Phân quyền
-const authenticate = async (req: any, res: any, next: any) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ message: 'Không có quyền truy cập' });
-  try {
-    const decoded: any = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch {
-    res.status(403).json({ message: 'Token hết hạn hoặc không hợp lệ' });
-  }
+// --- 3. CÁC HÀM API CRUD CHUNG ---
+// Hàm này giúp tạo nhanh API cho các bảng đơn giản
+const createCrud = (modelName: string, route: string) => {
+    // @ts-ignore
+    const model = prisma[modelName];
+    
+    app.get(`/api/${route}`, async (req, res) => {
+        try {
+            const items = await model.findMany();
+            res.json(items);
+        } catch(e) { res.status(500).json({ error: `Lỗi lấy ${route}` }); }
+    });
+    
+    app.post(`/api/${route}`, async (req, res) => {
+        try {
+            const data = req.body;
+            const item = await model.upsert({
+                where: { id: data.id || "new_" },
+                update: data,
+                create: { ...data, id: data.id || `${route}_` + Date.now() }
+            });
+            res.json(item);
+        } catch(e) { res.status(500).json({ error: `Lỗi lưu ${route}` }); }
+    });
+
+    app.delete(`/api/${route}/:id`, async (req, res) => {
+        try {
+            await model.delete({ where: { id: req.params.id } });
+            res.json({ success: true });
+        } catch(e) { res.status(500).json({ error: `Lỗi xóa ${route}` }); }
+    });
 };
 
-// --- AUTHENTICATION ---
+// ==========================================
+// 4. API MODULE: AUTH & USER
+// ==========================================
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    const user = await prisma.user.findUnique({ 
-      where: { username },
-      include: { department: true }
-    });
-    
-    if (!user) return res.status(401).json({ message: 'Tài khoản không tồn tại' });
-    
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch && password !== '123') return res.status(401).json({ message: 'Sai mật khẩu' });
+    const user = await prisma.user.findUnique({ where: { username } });
+    if (!user) return res.status(401).json({ success: false, message: 'Sai tài khoản' });
 
-    const token = jwt.sign({ id: user.id, roles: user.roles }, JWT_SECRET, { expiresIn: '24h' });
-    const { password: _, ...userSafe } = user;
-    
-    res.json({ success: true, token, user: userSafe });
-  } catch (error) {
-    res.status(500).json({ message: 'Lỗi hệ thống đăng nhập' });
-  }
-});
-
-// --- CHẤM CÔNG (ATTENDANCE) ---
-app.get('/api/attendance', authenticate, async (req: any, res) => {
-  const { date, deptId } = req.query;
-  try {
-    const records = await prisma.attendanceRecord.findMany({
-      where: {
-        date: date ? new Date(date as string) : undefined,
-        user: deptId && deptId !== 'ALL' ? { currentDeptId: deptId as string } : undefined
-      },
-      include: { user: { select: { name: true, avatar: true, currentPosition: true } } },
-      orderBy: { user: { name: 'asc' } }
-    });
-    res.json(records);
-  } catch (error) {
-    res.status(500).json({ error: 'Lỗi truy vấn dữ liệu chấm công' });
-  }
-});
-
-app.post('/api/attendance/bulk', authenticate, async (req: any, res) => {
-  const { records } = req.body;
-  try {
-    // Xử lý Transaction để đảm bảo tính nhất quán dữ liệu Cloud SQL
-    await prisma.$transaction(
-      records.map((r: any) => 
-        prisma.attendanceRecord.upsert({
-          where: { userId_date: { userId: r.userId, date: new Date(r.date) } },
-          update: {
-            type: r.type,
-            hours: r.hours,
-            overtimeHours: r.overtimeHours,
-            otRate: r.otRate,
-            output: r.output,
-            status: r.status,
-            notes: r.notes,
-            sentToHrAt: r.sentToHrAt ? new Date(r.sentToHrAt) : undefined
-          },
-          create: {
-            id: `ATT_${r.userId}_${r.date}`,
-            userId: r.userId,
-            date: new Date(r.date),
-            type: r.type,
-            hours: r.hours,
-            overtimeHours: r.overtimeHours,
-            otRate: r.otRate,
-            output: r.output,
-            status: r.status,
-            notes: r.notes
-          }
-        })
-      )
-    );
-    res.json({ success: true });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Lỗi cập nhật dữ liệu hàng loạt' });
-  }
-});
-
-// --- NHÂN SỰ (USERS) ---
-app.get('/api/users', authenticate, async (req, res) => {
-  try {
-    const users = await prisma.user.findMany({
-      include: { department: true },
-      orderBy: { name: 'asc' }
-    });
-    res.json(users);
-  } catch (error) {
-    res.status(500).json({ error: 'Lỗi tải danh sách nhân sự' });
-  }
-});
-
-app.post('/api/users', authenticate, async (req, res) => {
-  const userData = req.body;
-  try {
-    // Hash mật khẩu nếu là user mới hoặc đổi mật khẩu
-    if (userData.password && userData.password.length < 20) {
-      userData.password = await bcrypt.hash(userData.password, 10);
+    let isMatch = false;
+    // Kiểm tra pass mã hóa hoặc pass thường
+    if (user.password.startsWith('$2')) {
+        isMatch = await bcrypt.compare(password, user.password);
+    } else {
+        isMatch = (password === user.password);
     }
-    
-    const user = await prisma.user.upsert({
-      where: { id: userData.id },
-      update: { ...userData, joinDate: new Date(userData.joinDate) },
-      create: { ...userData, joinDate: new Date(userData.joinDate) }
-    });
-    res.json(user);
-  } catch (error) {
-    res.status(500).json({ error: 'Lỗi lưu thông tin nhân sự' });
-  }
+
+    if (isMatch) {
+      const token = jwt.sign({ id: user.id, roles: user.roles }, JWT_SECRET);
+      // Loại bỏ password khi trả về
+      const { password: _, ...userData } = user;
+      res.json({ success: true, token, user: userData });
+    } else {
+      res.status(401).json({ success: false, message: 'Sai mật khẩu' });
+    }
+  } catch (error) { res.status(500).json({ success: false, message: 'Lỗi Server' }); }
 });
 
-// --- PHÊ DUYỆT ĐÁNH GIÁ (EVALUATIONS) ---
-app.get('/api/evaluations', authenticate, async (req, res) => {
+app.get('/api/users', async (req, res) => {
   try {
-    const evals = await prisma.evaluationRequest.findMany({
-      include: { user: { select: { name: true } } },
-      orderBy: { createdAt: 'desc' }
-    });
-    res.json(evals);
-  } catch (error) {
-    res.status(500).json({ error: 'Lỗi tải dữ liệu đánh giá' });
-  }
+      const users = await prisma.user.findMany({ include: { department: true } });
+      res.json(users.map(({ password, ...u }) => u));
+  } catch (e) { res.status(500).json({error: "Lỗi lấy users"}); }
 });
 
-app.post('/api/evaluations', authenticate, async (req: any, res) => {
+app.post('/api/users', async (req, res) => {
   try {
     const data = req.body;
-    const result = await prisma.evaluationRequest.create({
-      data: {
-        ...data,
-        createdAt: new Date(),
-        requesterId: req.user.id
-      }
+    // Mã hóa mật khẩu nếu có nhập mới
+    if (data.password && data.password.trim() !== "") {
+        const salt = await bcrypt.genSalt(10);
+        data.password = await bcrypt.hash(data.password, salt);
+    } else { delete data.password; }
+    
+    const user = await prisma.user.upsert({
+      where: { id: data.id || "new_" + Date.now() },
+      update: data,
+      create: { ...data, id: data.id || "user_" + Date.now() }
     });
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: 'Lỗi tạo yêu cầu đánh giá' });
-  }
+    res.json(user);
+  } catch (e) { res.status(500).json({ error: "Lỗi lưu User" }); }
 });
 
-// --- DASHBOARD REAL-TIME ---
-app.get('/api/stats/summary', authenticate, async (req, res) => {
-  try {
-    const now = new Date();
-    const [totalUsers, activeAttendance, pendingEvals] = await Promise.all([
-      prisma.user.count({ where: { status: 'ACTIVE' } }),
-      prisma.attendanceRecord.count({ 
-        where: { 
-          date: { gte: new Date(now.getFullYear(), now.getMonth(), 1) },
-          status: 'APPROVED'
-        } 
-      }),
-      prisma.evaluationRequest.count({ where: { status: 'PENDING' } })
-    ]);
-    res.json({ totalUsers, activeAttendance, pendingEvals });
-  } catch (error) {
-    res.status(500).json({ error: 'Lỗi tổng hợp báo cáo' });
-  }
+app.delete('/api/users/:id', async (req, res) => {
+    try {
+        await prisma.user.delete({ where: { id: req.params.id } });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Lỗi xóa User" }); }
 });
 
-// --- CLOUD RUN HEALTH CHECK ---
-app.get('/health', (req, res) => res.status(200).send('Enterprise System Healthy'));
+// ==========================================
+// 5. API MODULE: CORE DATA
+// ==========================================
+createCrud('department', 'departments');
+createCrud('salaryFormula', 'formulas');
+createCrud('salaryVariable', 'variables');
+createCrud('criterionGroup', 'criteria/groups');
+createCrud('criterion', 'criteria/items');
+createCrud('auditLog', 'audit');
+createCrud('pieceworkConfig', 'piecework-configs');
+createCrud('dailyWorkItem', 'daily-work-items');
+createCrud('holiday', 'holidays');
+createCrud('bonusType', 'bonus-types');
+createCrud('annualBonusPolicy', 'bonus-policies');
 
-app.listen(PORT, () => {
-  console.log(`HRM Enterprise Cloud is running on port ${PORT}`);
+// ==========================================
+// 6. API MODULE: COMPLEX LOGIC
+// ==========================================
+
+// --- System Config ---
+app.get('/api/config/system', async (req, res) => {
+    try {
+        const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
+        res.json(config || {});
+    } catch(e) { res.json({}); }
+});
+app.post('/api/config/system', async (req, res) => {
+    try {
+        const data = req.body;
+        const config = await prisma.systemConfig.upsert({
+            where: { id: "default_config" },
+            update: data,
+            create: { ...data, id: "default_config" }
+        });
+        res.json(config);
+    } catch(e) { res.status(500).json({ error: "Lỗi lưu config" }); }
+});
+
+// --- Ranks & Grades ---
+app.get('/api/ranks', async (req, res) => {
+    try {
+        const ranks = await prisma.salaryRank.findMany({ include: { grades: true } });
+        res.json(ranks);
+    } catch(e) { res.status(500).json({ error: "Lỗi lấy ranks" }); }
+});
+app.post('/api/ranks', async (req, res) => {
+    try {
+        const { grades, ...rankData } = req.body;
+        const rank = await prisma.salaryRank.upsert({
+            where: { id: rankData.id || "new_" },
+            update: rankData,
+            create: { ...rankData, id: rankData.id || "rank_" + Date.now() }
+        });
+        if (grades && Array.isArray(grades)) {
+            for (const g of grades) {
+                await prisma.salaryGrade.upsert({
+                    where: { id: g.id || "new_" },
+                    update: { ...g, rankId: rank.id },
+                    create: { ...g, id: g.id || "grade_" + Date.now(), rankId: rank.id }
+                });
+            }
+        }
+        res.json(rank);
+    } catch(e) { res.status(500).json({ error: "Lỗi lưu rank" }); }
+});
+
+// --- Attendance (Chấm công) ---
+app.get('/api/attendance', async (req, res) => {
+    try {
+        const { month } = req.query; 
+        const records = await prisma.attendanceRecord.findMany({
+            where: month ? { date: { startsWith: month as string } } : {}
+        });
+        res.json(records);
+    } catch(e) { res.status(500).json({ error: "Lỗi lấy chấm công" }); }
+});
+app.post('/api/attendance', async (req, res) => {
+    try {
+        const data = req.body; 
+        const records = Array.isArray(data) ? data : [data];
+        const results = [];
+        for (const rec of records) {
+            const saved = await prisma.attendanceRecord.upsert({
+                where: { userId_date: { userId: rec.userId, date: rec.date } },
+                update: rec,
+                create: rec
+            });
+            results.push(saved);
+        }
+        res.json({ success: true, count: results.length });
+    } catch(e) { res.status(500).json({ error: "Lỗi lưu chấm công" }); }
+});
+
+// --- Salary Records (Bảng lương) ---
+app.get('/api/salary-records', async (req, res) => {
+    try {
+        const { month } = req.query;
+        const records = await prisma.salaryRecord.findMany({
+            where: month ? { date: month as string } : {}
+        });
+        res.json(records);
+    } catch(e) { res.status(500).json({ error: "Lỗi lấy bảng lương" }); }
+});
+app.post('/api/salary-records', async (req, res) => {
+    try {
+        const rec = req.body;
+        const saved = await prisma.salaryRecord.upsert({
+            where: { userId_date: { userId: rec.userId, date: rec.date } },
+            update: rec,
+            create: { ...rec, id: rec.id || `sal_${rec.userId}_${rec.date}` }
+        });
+        res.json(saved);
+    } catch(e) { res.status(500).json({ error: "Lỗi lưu bảng lương" }); }
+});
+
+// --- Evaluations (Đánh giá) ---
+app.get('/api/evaluations', async (req, res) => {
+    try {
+        const items = await prisma.evaluationRequest.findMany({ orderBy: { createdAt: 'desc' } });
+        res.json(items);
+    } catch(e) { res.status(500).json({ error: "Lỗi lấy đánh giá" }); }
+});
+app.post('/api/evaluations', async (req, res) => {
+    try {
+        const item = await prisma.evaluationRequest.create({ data: req.body });
+        res.json(item);
+    } catch(e) { res.status(500).json({ error: "Lỗi lưu đánh giá" }); }
+});
+
+// ==========================================
+// 7. PHỤC VỤ FILE TĨNH (FRONTEND)
+// ==========================================
+app.get('/api/ping', (req, res) => {
+    res.json({ status: "OK", mode: "FULL_VERSION" });
+});
+
+// Trỏ đúng vào thư mục 'dist' do Vite build ra (nằm cùng cấp với server.ts vì root là .)
+const distPath = path.join(process.cwd(), 'dist');
+
+if (fs.existsSync(distPath)) {
+    console.log(`[STATIC] Đang phục vụ giao diện từ: ${distPath}`);
+    app.use(express.static(distPath));
+} else {
+    console.error(`[STATIC] CẢNH BÁO: Không tìm thấy thư mục 'dist'. Vui lòng kiểm tra log Build.`);
+}
+
+// Fallback: Mọi đường dẫn không phải API đều trả về index.html (để React Router xử lý)
+app.get('*', (req, res) => {
+    if (fs.existsSync(path.join(distPath, 'index.html'))) {
+        res.sendFile(path.join(distPath, 'index.html'));
+    } else {
+        res.send("<h1>Server Backend đang chạy.</h1><p>Đang chờ Frontend build xong (thư mục dist chưa được tạo).</p>");
+    }
+});
+
+// Lắng nghe cổng 0.0.0.0 để Cloud Run nhận diện
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Backend HRM đã chạy thành công tại cổng ${PORT}`);
 });

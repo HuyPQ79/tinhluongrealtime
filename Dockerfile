@@ -1,26 +1,32 @@
-# Sử dụng Node.js bản rút gọn
+# 1. Dùng Node 20
 FROM node:20-slim
 
-# Cài đặt OpenSSL cho Prisma
-RUN apt-get update -y && apt-get install -y openssl libssl-dev ca-certificates
+# 2. Cài thư viện hệ thống
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Sao chép file cấu hình
-COPY package*.json ./
+# 3. Copy file cấu hình
+COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
 
-# Cài đặt thư viện
-RUN npm install
+# 4. QUAN TRỌNG: Xóa node_modules rác nếu lỡ copy vào, sau đó cài mới
+RUN rm -rf node_modules && npm install
 
-# Sao chép toàn bộ code
-COPY . .
-
-# Khởi tạo Prisma Client
+# 5. Generate Prisma
 RUN npx prisma generate
 
-# Cloud Run yêu cầu ứng dụng lắng nghe trên cổng 8080 (mặc định)
+# 6. Copy toàn bộ code
+COPY . .
+
+# 7. Build Web
+# Tăng RAM để tránh crash
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
+
+# 8. Cấu hình
+ENV NODE_ENV=production
+ENV PORT=8080
 EXPOSE 8080
 
-# Chạy server
-CMD ["npx", "tsx", "server.ts"]
+# 9. Khởi động (Dùng npm start để gọi tsx server.ts)
+CMD ["npm", "start"]

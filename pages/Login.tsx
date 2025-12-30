@@ -11,15 +11,25 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = login(username, password);
-    if (success) {
-      navigate('/');
-    } else {
-      setError('Tên đăng nhập hoặc mật khẩu không đúng!');
+    setError(''); // Reset lỗi cũ
+    
+    try {
+        // Thêm await để đợi login xong hẳn
+        const user = await login(username, password);
+        
+        if (user) {
+            // Đăng nhập thành công -> Chuyển trang
+            // Dùng replace: true để không cho user back lại trang login
+            navigate('/', { replace: true });
+        } else {
+            setError('Tên đăng nhập hoặc mật khẩu không đúng!');
+        }
+    } catch (err) {
+        setError('Lỗi kết nối server!');
     }
-  };
+};
 
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
