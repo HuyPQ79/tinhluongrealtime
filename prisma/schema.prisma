@@ -1,163 +1,301 @@
-import express from 'express';
-import cors from 'cors';
-import path from 'path';
-import fs from 'fs';
-import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-
-// --- KHỞI TẠO SERVER ---
-console.log("=== SERVER ĐANG KHỞI ĐỘNG (FULL MODE) ===");
-
-const app = express();
-// Ép kiểu số nguyên cho PORT
-const PORT = parseInt(process.env.PORT || '8080');
-const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
-
-const prisma = new PrismaClient();
-
-app.use(cors());
-app.use(express.json());
-
-// ==========================================
-// 1. API ĐĂNG NHẬP (FIX LỖI LOGIN & USER)
-// ==========================================
-
-app.post('/api/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-    console.log(`[LOGIN] Đang kiểm tra: ${username}`);
-
-    const user = await prisma.user.findUnique({ where: { username } });
-
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'Tài khoản không tồn tại' });
-    }
-
-    // --- KIỂM TRA MẬT KHẨU THÔNG MINH (HYBRID) ---
-    let isMatch = false;
-
-    // Nếu pass trong DB đã mã hóa (bắt đầu bằng $2) -> Dùng Bcrypt
-    if (user.password.startsWith('$2')) {
-        isMatch = await bcrypt.compare(password, user.password);
-    } 
-    // Nếu pass trong DB là chữ thường (User cũ) -> So sánh thường
-    else {
-        isMatch = (password === user.password);
-    }
-
-    if (isMatch) {
-      console.log(`[LOGIN] Thành công: ${username}`);
-      // Tạo Token
-      const token = jwt.sign({ id: user.id, roles: user.roles }, JWT_SECRET);
-      
-      // Trả về user (Bỏ mật khẩu đi để bảo mật)
-      const { password: _, ...userData } = user;
-      
-      // Quan trọng: Trả về đầy đủ để Frontend cập nhật State ngay lập tức
-      res.json({ success: true, token, user: userData });
-    } else {
-      console.log(`[LOGIN] Sai mật khẩu: ${username}`);
-      res.status(401).json({ success: false, message: 'Sai mật khẩu' });
-    }
-  } catch (error) {
-    console.error("[LOGIN] Lỗi:", error);
-    res.status(500).json({ success: false, message: 'Lỗi server' });
-  }
-});
-
-// ==========================================
-// 2. API QUẢN LÝ USER (LƯU VÀO DB THẬT)
-// ==========================================
-
-app.get('/api/users', async (req, res) => {
-  try {
-    const users = await prisma.user.findMany();
-    // Ẩn mật khẩu
-    const safeUsers = users.map(u => {
-      const { password, ...rest } = u;
-      return rest;
-    });
-    res.json(safeUsers);
-  } catch (e) { 
-    console.error("Lỗi lấy users:", e);
-    res.status(500).json({ error: "Lỗi lấy danh sách user" }); 
-  }
-});
-
-app.post('/api/users', async (req, res) => {
-  try {
-    const data = req.body;
-    console.log(`[USER] Đang lưu user: ${data.username}`);
-
-    // MÃ HÓA MẬT KHẨU (Nếu có nhập pass mới)
-    if (data.password && data.password.trim() !== "") {
-        const salt = await bcrypt.genSalt(10);
-        data.password = await bcrypt.hash(data.password, salt);
-    } else {
-        // Nếu edit mà không nhập pass -> Xóa field này để không ghi đè thành rỗng
-        delete data.password;
-    }
-
-    // Dùng upsert để: Có thì cập nhật, Chưa có thì tạo mới
-    // (Khắc phục lỗi tạo xong F5 bị mất)
-    const user = await prisma.user.upsert({
-      where: { id: data.id || "new_" + Date.now() },
-      update: data,
-      create: {
-        ...data,
-        id: data.id || "user_" + Date.now()
-      }
-    });
-    
-    console.log(`[USER] Đã lưu thành công: ${user.username}`);
-    res.json(user);
-  } catch (e) { 
-    console.error("[USER] Lỗi lưu user:", e);
-    res.status(500).json({ error: "Không thể lưu user. Có thể trùng Username." }); 
-  }
-});
-
-// ==========================================
-// 3. CÁC API KHÁC
-// ==========================================
-
-app.get('/api/config', async (req, res) => {
-  try {
-    const config = await prisma.systemConfig.findFirst();
-    res.json(config);
-  } catch(e) { res.json({}); }
-});
-
-app.get('/api/ping', (req, res) => {
-  res.json({ status: "OK", message: "Server Full Mode đang chạy!" });
-});
-
-// ==========================================
-// 4. PHỤC VỤ GIAO DIỆN WEB (QUAN TRỌNG)
-// ==========================================
-
-// Trỏ đúng vào thư mục 'dist' như bản chạy thành công
-const distPath = path.join(process.cwd(), 'dist');
-
-if (fs.existsSync(distPath)) {
-  console.log(`[STATIC] Đang phục vụ giao diện từ: ${distPath}`);
-  app.use(express.static(distPath));
-} else {
-  console.error("[STATIC] CẢNH BÁO: Không tìm thấy thư mục 'dist'!");
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
-// Fallback về index.html để React Router hoạt động
-app.get('*', (req, res) => {
-  const indexPath = path.join(distPath, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(404).send('Server đang chạy nhưng chưa thấy giao diện (dist/index.html).');
-  }
-});
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
 
-// --- KHỞI ĐỘNG ---
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Backend HRM đã sẵn sàng tại cổng ${PORT}`);
-});
+// --- ENUMS ---
+enum UserRole {
+  ADMIN
+  BAN_LANH_DAO
+  GIAM_DOC_KHOI
+  QUAN_LY
+  KE_TOAN_LUONG
+  NHAN_SU
+  NHAN_VIEN
+  AUDITOR
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  MATERNITY
+  PROBATION
+  PENDING_APPROVAL
+}
+
+enum RecordStatus {
+  DRAFT
+  PENDING
+  PENDING_MANAGER
+  PENDING_GDK
+  PENDING_BLD
+  PENDING_HR
+  APPROVED
+  REJECTED
+}
+
+enum AttendanceType {
+  TIME
+  PIECEWORK
+  DAILY
+  MODE
+  HOLIDAY
+  PAID_LEAVE
+  UNPAID
+  WAITING
+}
+
+// --- CORE MODELS ---
+
+model User {
+  id                   String       @id
+  username             String       @unique
+  password             String
+  name                 String
+  avatar               String?      @db.Text
+  email                String?
+  phone                String?
+  joinDate             DateTime     @default(now())
+  status               UserStatus   @default(ACTIVE)
+  roles                Json
+  numberOfDependents   Int          @default(0)
+  
+  currentDeptId        String?
+  department           Department?  @relation(fields: [currentDeptId], references: [id])
+  
+  // Thông tin lương
+  paymentType          String       @default("TIME")
+  efficiencySalary     Decimal      @default(0) @db.Decimal(18, 2)
+  pieceworkUnitPrice   Decimal      @default(0) @db.Decimal(18, 2)
+  reservedBonusAmount  Decimal      @default(0) @db.Decimal(18, 2)
+  probationRate        Int          @default(100)
+  
+  attendanceRecords    AttendanceRecord[]
+  evaluationRequests   EvaluationRequest[]
+  salaryRecords        SalaryRecord[]
+  
+  @@map("users")
+}
+
+model Department {
+  id              String   @id @default(cuid())
+  name            String
+  budgetNorm      Decimal  @default(0) @db.Decimal(18, 2)
+  managerId       String?
+  hrId            String?
+  blockDirectorId String?
+  users           User[]
+  
+  @@map("departments")
+}
+
+// --- ATTENDANCE & SALARY DATA ---
+
+model AttendanceRecord {
+  id                   String         @id @default(cuid())
+  userId               String
+  user                 User           @relation(fields: [userId], references: [id])
+  date                 String         // YYYY-MM-DD
+  type                 AttendanceType @default(TIME)
+  hours                Float          @default(8)
+  overtimeHours        Float          @default(0)
+  otRate               Float          @default(1.5)
+  isOvertimeWithOutput Boolean        @default(false)
+  output               Float?
+  pieceworkUnitPrice   Decimal?       @db.Decimal(18, 2)
+  status               RecordStatus   @default(DRAFT)
+  notes                String?        @db.Text
+  rejectionReason      String?        @db.Text
+  sentToHrAt           DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@unique([userId, date])
+  @@map("attendance_records")
+}
+
+model SalaryRecord {
+  id                     String       @id @default(cuid())
+  userId                 String
+  user                   User         @relation(fields: [userId], references: [id])
+  date                   String       // YYYY-MM
+  status                 RecordStatus @default(DRAFT)
+  
+  actualBaseSalary       Decimal      @default(0) @db.Decimal(18, 2)
+  actualEfficiencySalary Decimal      @default(0) @db.Decimal(18, 2)
+  actualPieceworkSalary  Decimal      @default(0) @db.Decimal(18, 2)
+  totalAllowance         Decimal      @default(0) @db.Decimal(18, 2)
+  totalBonus             Decimal      @default(0) @db.Decimal(18, 2)
+  insuranceDeduction     Decimal      @default(0) @db.Decimal(18, 2)
+  pitDeduction           Decimal      @default(0) @db.Decimal(18, 2)
+  advancePayment         Decimal      @default(0) @db.Decimal(18, 2)
+  netSalary              Decimal      @default(0) @db.Decimal(18, 2)
+  
+  calculationLog         Json?
+  updatedAt              DateTime     @updatedAt
+
+  @@unique([userId, date])
+  @@map("salary_records")
+}
+
+// --- CONFIGURATION TABLES (BỔ SUNG MỚI) ---
+
+model SystemConfig {
+  id                  String   @id @default("default_config")
+  baseSalary          Decimal  @default(0) @db.Decimal(18, 2)
+  standardWorkDays    Int      @default(26)
+  insuranceBaseSalary Decimal  @default(0) @db.Decimal(18, 2)
+  maxInsuranceBase    Decimal  @default(0) @db.Decimal(18, 2)
+  pitSteps            Json?
+  insuranceRules      Json?
+  seniorityRules      Json?
+  updatedAt           DateTime @updatedAt
+  
+  @@map("system_configs")
+}
+
+model SalaryFormula {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  area        String   
+  expression  String   @db.Text
+  description String?  @db.Text
+  status      String   @default("ACTIVE")
+  group       String?
+  
+  @@map("salary_formulas")
+}
+
+model SalaryVariable {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  group       String
+  description String?  @db.Text
+  
+  @@map("salary_variables")
+}
+
+// --- Thêm: Lương khoán & Công nhật ---
+model PieceworkConfig {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  unitPrice Decimal  @default(0) @db.Decimal(18, 2)
+  
+  @@map("piecework_configs")
+}
+
+model DailyWorkItem {
+  id        String   @id @default(cuid())
+  name      String
+  unitPrice Decimal  @default(0) @db.Decimal(18, 2)
+  type      String   // NORMAL, HEAVY...
+  
+  @@map("daily_work_items")
+}
+
+// --- Thêm: Ngày lễ & Thưởng ---
+model Holiday {
+  id        String   @id @default(cuid())
+  date      String   @unique // YYYY-MM-DD
+  name      String
+  rate      Float    @default(3.0) // Hệ số lương
+  
+  @@map("holidays")
+}
+
+model BonusType {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  isTaxable Boolean  @default(true)
+  
+  @@map("bonus_types")
+}
+
+model AnnualBonusPolicy {
+  id          String   @id @default(cuid())
+  name        String
+  formulaCode String
+  condition   String?
+  
+  @@map("annual_bonus_policies")
+}
+
+// --- Tiêu chí & Khung lương ---
+model CriterionGroup {
+  id       String      @id @default(cuid())
+  name     String
+  weight   Float       @default(0)
+  items    Criterion[]
+  @@map("criterion_groups")
+}
+
+model Criterion {
+  id             String            @id @default(cuid())
+  name           String
+  description    String?           @db.Text
+  points         Float             @default(0)
+  type           String
+  target         String
+  proofRequired  Boolean           @default(false)
+  groupId        String?
+  group          CriterionGroup?   @relation(fields: [groupId], references: [id])
+  @@map("criteria")
+}
+
+model SalaryRank {
+  id           String        @id @default(cuid())
+  name         String
+  description  String?
+  baseSalary   Decimal       @default(0) @db.Decimal(18, 2)
+  allowance    Decimal       @default(0) @db.Decimal(18, 2)
+  grades       SalaryGrade[]
+  @@map("salary_ranks")
+}
+
+model SalaryGrade {
+  id         String     @id @default(cuid())
+  name       String
+  multiplier Float      @default(1.0)
+  amount     Decimal    @default(0) @db.Decimal(18, 2)
+  rankId     String
+  rank       SalaryRank @relation(fields: [rankId], references: [id], onDelete: Cascade)
+  @@map("salary_grades")
+}
+
+// --- Audit & Request ---
+model EvaluationRequest {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id])
+  criteriaId      String
+  criteriaName    String
+  type            String
+  target          String
+  points          Float
+  description     String?      @db.Text
+  proofFileName   String?
+  requesterId     String
+  status          RecordStatus @default(PENDING)
+  createdAt       DateTime     @default(now())
+  rejectionReason String?      @db.Text
+  @@map("evaluation_requests")
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  action         String
+  actor          String
+  details        String   @db.Text
+  isConfigAction Boolean  @default(false)
+  timestamp      DateTime @default(now())
+  @@map("audit_logs")
+}
