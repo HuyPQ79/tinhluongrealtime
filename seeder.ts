@@ -2,8 +2,7 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// --- DỮ LIỆU MẪU (Đã chuẩn hóa) ---
-
+// --- DỮ LIỆU MẪU ---
 const INITIAL_RANKS = [
   { id: 'R1', name: 'Ban Lãnh Đạo / HĐQT', baseSalary: 0, allowance: 0 },
   { id: 'R2', name: 'Giám Đốc Khối', baseSalary: 0, allowance: 0 },
@@ -31,7 +30,7 @@ const INITIAL_DEPARTMENTS = [
 ];
 
 const INITIAL_USERS = [
-  { id: 'USR_ADMIN', username: 'admin', password: '123', name: 'Quản Trị Hệ Thống', roles: ['ADMIN'], status: 'ACTIVE', paymentType: 'TIME', efficiencySalary: 0 },
+  // Bỏ qua Admin ở đây vì server tự tạo rồi, tránh xung đột
   { id: 'USR_BLD', username: 'bld', password: '123', name: 'Lê Ban Lãnh Đạo', roles: ['BAN_LANH_DAO'], status: 'ACTIVE', currentDeptId: 'DEP01', paymentType: 'TIME', efficiencySalary: 25000000, reservedBonusAmount: 100000000 },
   { id: 'USR_GDK', username: 'gdk', password: '123', name: 'Trần Giám Đốc Khối', roles: ['GIAM_DOC_KHOI'], status: 'ACTIVE', currentDeptId: 'DEP02', paymentType: 'TIME', efficiencySalary: 18000000, reservedBonusAmount: 70000000 },
   { id: 'USR_TP_TIME', username: 'tpkd', password: '123', name: 'Nguyễn Văn TP Kinh Doanh', roles: ['QUAN_LY'], status: 'ACTIVE', currentDeptId: 'DEP02', paymentType: 'TIME', efficiencySalary: 12000000, reservedBonusAmount: 50000000 },
@@ -79,40 +78,44 @@ const INITIAL_DAILY_WORK = [
   { id: 'DW2', name: 'Kiểm kê kho bãi', unitPrice: 200000, type: 'SERVICE' },
 ];
 
-// --- HÀM SEED ---
+// --- HÀM SEED (ĐÃ NÂNG CẤP) ---
 export const seedDatabase = async () => {
     console.log("--> START SEEDING...");
 
-    // 1. Departments
-    for (const d of INITIAL_DEPARTMENTS) {
-        await prisma.department.upsert({ where: { id: d.id }, update: d, create: d });
-    }
+    // Dùng try-catch cho từng phần để không bị dừng giữa chừng
+    try {
+        for (const d of INITIAL_DEPARTMENTS) await prisma.department.upsert({ where: { id: d.id }, update: d, create: d });
+        console.log("✓ Departments");
+    } catch(e) { console.error("x Departments error", e) }
 
-    // 2. Ranks & Grades
-    for (const r of INITIAL_RANKS) {
-        await prisma.salaryRank.upsert({ where: { id: r.id }, update: r, create: r });
-    }
-    for (const g of INITIAL_GRADES) {
-        await prisma.salaryGrade.upsert({ where: { id: g.id }, update: g, create: g });
-    }
+    try {
+        for (const r of INITIAL_RANKS) await prisma.salaryRank.upsert({ where: { id: r.id }, update: r, create: r });
+        for (const g of INITIAL_GRADES) await prisma.salaryGrade.upsert({ where: { id: g.id }, update: g, create: g });
+        console.log("✓ Ranks & Grades");
+    } catch(e) { console.error("x Ranks error", e) }
 
-    // 3. Users
-    for (const u of INITIAL_USERS) {
-        await prisma.user.upsert({
-            where: { id: u.id },
-            update: u,
-            create: { ...u, joinDate: new Date().toISOString() }
-        });
-    }
+    try {
+        for (const u of INITIAL_USERS) {
+            // Check trùng username trước để không bị lỗi
+            const existing = await prisma.user.findUnique({ where: { username: u.username } });
+            if (!existing) {
+                await prisma.user.create({ data: { ...u, joinDate: new Date().toISOString() } });
+            }
+        }
+        console.log("✓ Users");
+    } catch(e) { console.error("x Users error", e) }
 
-    // 4. Configs
-    for (const v of INITIAL_VARIABLES) await prisma.salaryVariable.upsert({ where: { code: v.code }, update: v, create: v });
-    for (const f of INITIAL_FORMULAS) await prisma.salaryFormula.upsert({ where: { code: f.code }, update: f, create: f });
+    try {
+        for (const v of INITIAL_VARIABLES) await prisma.salaryVariable.upsert({ where: { code: v.code }, update: v, create: v });
+        for (const f of INITIAL_FORMULAS) await prisma.salaryFormula.upsert({ where: { code: f.code }, update: f, create: f });
+        console.log("✓ Configs (Variables, Formulas)");
+    } catch(e) { console.error("x Configs error", e) }
     
-    for (const g of INITIAL_GROUPS) await prisma.criterionGroup.upsert({ where: { id: g.id }, update: g, create: g });
-    for (const c of INITIAL_CRITERIA) await prisma.criterion.upsert({ where: { id: c.id }, update: c, create: { ...c, proofRequired: false } });
-
-    for (const w of INITIAL_DAILY_WORK) await prisma.dailyWorkItem.upsert({ where: { id: w.id }, update: w, create: w });
+    try {
+        for (const g of INITIAL_GROUPS) await prisma.criterionGroup.upsert({ where: { id: g.id }, update: g, create: g });
+        for (const c of INITIAL_CRITERIA) await prisma.criterion.upsert({ where: { id: c.id }, update: c, create: { ...c, proofRequired: false } });
+        console.log("✓ Criteria");
+    } catch(e) { console.error("x Criteria error", e) }
 
     console.log("--> SEEDING COMPLETED!");
     return { success: true };

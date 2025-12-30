@@ -10,7 +10,7 @@ import jwt from 'jsonwebtoken';
 import { seedDatabase } from './seeder'; 
 
 // --- 1. GÀI BẪY BẮT LỖI (CRITICAL ERROR TRAP) ---
-// Giúp server không bị crash im lặng
+// Giúp server không bị crash im lặng, in lỗi chi tiết ra log
 process.on('uncaughtException', (err) => {
   console.error('🔥 LỖI CHẾT NGƯỜI (Uncaught Exception):', err);
 });
@@ -70,7 +70,7 @@ async function initDatabase() {
   }
 }
 
-// Gọi hàm khởi tạo
+// Gọi hàm khởi tạo ngay khi start
 initDatabase();
 
 // Middleware
@@ -88,14 +88,17 @@ const createCrud = (modelName: string, route: string) => {
         try {
             const items = await model.findMany();
             res.json(items);
-        } catch(e) { res.status(500).json({ error: `Lỗi lấy ${route}` }); }
+        } catch(e) { 
+            console.error(`Lỗi lấy ${route}:`, e);
+            res.status(500).json({ error: `Lỗi lấy ${route}` }); 
+        }
     });
     
     // CREATE / UPDATE (Upsert)
     app.post(`/api/${route}`, async (req, res) => {
         try {
             const data = req.body;
-            // Nếu không có ID thì coi như là tạo mới (dùng ID ảo để trigger create)
+            // Upsert: Có ID thì sửa, không có thì thêm mới
             const item = await model.upsert({
                 where: { id: data.id || "new_record_id" }, 
                 update: data,
@@ -103,7 +106,7 @@ const createCrud = (modelName: string, route: string) => {
             });
             res.json(item);
         } catch(e) { 
-            console.error(e);
+            console.error(`Lỗi lưu ${route}:`, e);
             res.status(500).json({ error: `Lỗi lưu ${route}` }); 
         }
     });
@@ -113,7 +116,10 @@ const createCrud = (modelName: string, route: string) => {
         try {
             await model.delete({ where: { id: req.params.id } });
             res.json({ success: true });
-        } catch(e) { res.status(500).json({ error: `Lỗi xóa ${route}` }); }
+        } catch(e) { 
+            console.error(`Lỗi xóa ${route}:`, e);
+            res.status(500).json({ error: `Lỗi xóa ${route}` }); 
+        }
     });
 };
 
@@ -143,7 +149,10 @@ app.post('/api/login', async (req, res) => {
     } else {
       res.status(401).json({ success: false, message: 'Sai mật khẩu' });
     }
-  } catch (error) { res.status(500).json({ success: false, message: 'Lỗi Server' }); }
+  } catch (error) { 
+      console.error("Login Error:", error);
+      res.status(500).json({ success: false, message: 'Lỗi Server' }); 
+  }
 });
 
 app.get('/api/users', async (req, res) => {
@@ -151,10 +160,13 @@ app.get('/api/users', async (req, res) => {
       const users = await prisma.user.findMany({ include: { department: true } });
       // @ts-ignore
       res.json(users.map(({ password, ...u }) => u));
-  } catch (e) { res.status(500).json({error: "Lỗi lấy users"}); }
+  } catch (e) { 
+      console.error("Get Users Error:", e);
+      res.status(500).json({error: "Lỗi lấy users"}); 
+  }
 });
 
-// --- API LƯU USER QUAN TRỌNG (ĐÃ SỬA LỖI & THÊM LOGIC MẶC ĐỊNH) ---
+// *** API LƯU USER QUAN TRỌNG (ĐÃ SỬA LỖI & THÊM LOGIC MẶC ĐỊNH) ***
 app.post('/api/users', async (req, res) => {
   try {
     const data = req.body;
@@ -167,12 +179,13 @@ app.post('/api/users', async (req, res) => {
         delete data.password; // Nếu không gửi pass thì giữ nguyên pass cũ
     }
     
-    // 2. TỰ ĐỘNG ĐIỀN THÔNG TIN CÒN THIẾU (Để fix lỗi 500 khi thêm mới)
+    // 2. TỰ ĐỘNG ĐIỀN THÔNG TIN CÒN THIẾU (Fix lỗi 500 khi thêm mới)
     // Nếu không chọn quyền, mặc định là NHAN_VIEN
     if (!data.roles || data.roles.length === 0) {
         data.roles = ["NHAN_VIEN"];
     }
-    // Các giá trị mặc định bắt buộc
+    
+    // Các giá trị mặc định bắt buộc (Tránh lỗi NULL ở Database)
     if (!data.paymentType) data.paymentType = "TIME";
     if (data.efficiencySalary === undefined) data.efficiencySalary = 0;
     if (data.pieceworkUnitPrice === undefined) data.pieceworkUnitPrice = 0;
@@ -181,7 +194,7 @@ app.post('/api/users', async (req, res) => {
     if (data.numberOfDependents === undefined) data.numberOfDependents = 0;
     if (!data.status) data.status = "ACTIVE";
     
-    // 3. Lưu vào DB
+    // 3. Lưu vào DB (Upsert)
     const user = await prisma.user.upsert({
       where: { id: data.id || "new_" + Date.now() },
       update: data,
@@ -199,7 +212,10 @@ app.delete('/api/users/:id', async (req, res) => {
     try {
         await prisma.user.delete({ where: { id: req.params.id } });
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Lỗi xóa User" }); }
+    } catch (e) { 
+        console.error("Delete User Error:", e);
+        res.status(500).json({ error: "Lỗi xóa User" }); 
+    }
 });
 
 // ==========================================
@@ -221,10 +237,10 @@ createCrud('annualBonusPolicy', 'bonus-policies');
 // 6. API MODULE: COMPLEX LOGIC & SEEDER
 // ==========================================
 
-// --- API NẠP DỮ LIỆU TỰ ĐỘNG ---
+// --- API NẠP DỮ LIỆU TỰ ĐỘNG (Link bí mật) ---
 app.get('/api/seed-data-secret', async (req, res) => {
     try {
-      console.log("--> Đang chạy lệnh nạp dữ liệu...");
+      console.log("--> [SEEDER] Đang chạy lệnh nạp dữ liệu...");
       await seedDatabase();
       res.json({ success: true, message: "Dữ liệu đã được nạp thành công!" });
     } catch (error) {
@@ -252,7 +268,7 @@ app.post('/api/config/system', async (req, res) => {
     } catch(e) { res.status(500).json({ error: "Lỗi lưu config" }); }
 });
 
-// --- Ranks & Grades ---
+// --- Ranks & Grades (Logic phức tạp hơn vì có bảng con) ---
 app.get('/api/ranks', async (req, res) => {
     try {
         const ranks = await prisma.salaryRank.findMany({ include: { grades: true } });
@@ -262,12 +278,13 @@ app.get('/api/ranks', async (req, res) => {
 app.post('/api/ranks', async (req, res) => {
     try {
         const { grades, ...rankData } = req.body;
+        // 1. Lưu Rank
         const rank = await prisma.salaryRank.upsert({
             where: { id: rankData.id || "new_" },
             update: rankData,
             create: { ...rankData, id: rankData.id || "rank_" + Date.now() }
         });
-        // Lưu Grades con
+        // 2. Lưu Grades con (nếu có)
         if (grades && Array.isArray(grades)) {
             for (const g of grades) {
                 await prisma.salaryGrade.upsert({
