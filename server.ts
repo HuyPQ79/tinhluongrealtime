@@ -7,9 +7,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 // --- IMPORT SEEDER (ĐỂ NẠP DỮ LIỆU) ---
-// Nếu bạn để file seeder.ts ở thư mục gốc thì import thế này:
 import { seedDatabase } from './seeder'; 
-// Nếu bạn để trong src thì sửa thành: import { seedDatabase } from './src/seeder';
 
 // --- 1. GÀI BẪY BẮT LỖI (CRITICAL ERROR TRAP) ---
 // Giúp server không bị crash im lặng
@@ -156,6 +154,7 @@ app.get('/api/users', async (req, res) => {
   } catch (e) { res.status(500).json({error: "Lỗi lấy users"}); }
 });
 
+// --- API LƯU USER QUAN TRỌNG (ĐÃ SỬA LỖI & THÊM LOGIC MẶC ĐỊNH) ---
 app.post('/api/users', async (req, res) => {
   try {
     const data = req.body;
@@ -168,18 +167,18 @@ app.post('/api/users', async (req, res) => {
         delete data.password; // Nếu không gửi pass thì giữ nguyên pass cũ
     }
     
-    // 2. TỰ ĐỘNG ĐIỀN THÔNG TIN CÒN THIẾU (Fix lỗi thêm mới)
+    // 2. TỰ ĐỘNG ĐIỀN THÔNG TIN CÒN THIẾU (Để fix lỗi 500 khi thêm mới)
     // Nếu không chọn quyền, mặc định là NHAN_VIEN
     if (!data.roles || data.roles.length === 0) {
         data.roles = ["NHAN_VIEN"];
     }
-    // Các mặc định khác để tránh lỗi Database
-    if (!data.paymentType) data.paymentType = "TIME"; // Mặc định lương thời gian
-    if (!data.efficiencySalary) data.efficiencySalary = 0;
-    if (!data.pieceworkUnitPrice) data.pieceworkUnitPrice = 0;
-    if (!data.reservedBonusAmount) data.reservedBonusAmount = 0;
-    if (!data.probationRate) data.probationRate = 100;
-    if (!data.numberOfDependents) data.numberOfDependents = 0;
+    // Các giá trị mặc định bắt buộc
+    if (!data.paymentType) data.paymentType = "TIME";
+    if (data.efficiencySalary === undefined) data.efficiencySalary = 0;
+    if (data.pieceworkUnitPrice === undefined) data.pieceworkUnitPrice = 0;
+    if (data.reservedBonusAmount === undefined) data.reservedBonusAmount = 0;
+    if (data.probationRate === undefined) data.probationRate = 100;
+    if (data.numberOfDependents === undefined) data.numberOfDependents = 0;
     if (!data.status) data.status = "ACTIVE";
     
     // 3. Lưu vào DB
@@ -191,12 +190,9 @@ app.post('/api/users', async (req, res) => {
     
     res.json(user);
   } catch (e) { 
-      console.error("Lỗi lưu User:", e); // In lỗi ra log để dễ soi
+      console.error("Lỗi lưu User:", e);
       res.status(500).json({ error: "Lỗi lưu User. Vui lòng kiểm tra lại dữ liệu nhập." }); 
   }
-});
-    res.json(user);
-  } catch (e) { res.status(500).json({ error: "Lỗi lưu User" }); }
 });
 
 app.delete('/api/users/:id', async (req, res) => {
@@ -225,7 +221,7 @@ createCrud('annualBonusPolicy', 'bonus-policies');
 // 6. API MODULE: COMPLEX LOGIC & SEEDER
 // ==========================================
 
-// --- API NẠP DỮ LIỆU TỰ ĐỘNG (QUAN TRỌNG) ---
+// --- API NẠP DỮ LIỆU TỰ ĐỘNG ---
 app.get('/api/seed-data-secret', async (req, res) => {
     try {
       console.log("--> Đang chạy lệnh nạp dữ liệu...");
