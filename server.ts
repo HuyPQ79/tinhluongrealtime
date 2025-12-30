@@ -12,7 +12,35 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '8080');
 const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 const prisma = new PrismaClient();
-
+// === TỰ ĐỘNG ĐỒNG BỘ DATABASE (Thêm đoạn này vào) ===
+async function initDatabase() {
+  try {
+    // Thử query nhẹ để xem DB sống không
+    await prisma.$queryRaw`SELECT 1`;
+    console.log("--> [DB] Kết nối Database thành công.");
+    
+    // Tự động tạo System Config mặc định nếu chưa có
+    const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
+    if (!config) {
+      console.log("--> [DB] Đang tạo cấu hình hệ thống mặc định...");
+      await prisma.systemConfig.create({
+        data: {
+          id: "default_config",
+          baseSalary: 1800000,
+          standardWorkDays: 26,
+          insuranceBaseSalary: 1800000,
+          maxInsuranceBase: 36000000
+        }
+      });
+    }
+  } catch (e) {
+    console.error("--> [DB LỖI] Không thể kết nối hoặc bảng chưa tồn tại.", e);
+    // Lưu ý: Trên Cloud Run, bạn cần chạy 'npx prisma db push' từ máy local 
+    // hoặc thêm vào Dockerfile nếu dùng SQLite/Postgres container
+  }
+}
+// Gọi hàm này ngay khi server start
+initDatabase();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
