@@ -6,37 +6,31 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-// --- 1. GÀI BẪY BẮT LỖI (Quan trọng để Server không sập nguồn) ---
+// --- 1. GÀI BẪY BẮT LỖI ---
 process.on('uncaughtException', (err) => {
   console.error('🔥 LỖI CHẾT NGƯỜI (Uncaught Exception):', err);
-  // Không exit process để giữ server sống cho bạn debug
 });
 process.on('unhandledRejection', (reason, promise) => {
   console.error('🔥 LỖI PROMISE (Unhandled Rejection):', reason);
 });
 
-console.log("=== SERVER ĐANG KHỞI ĐỘNG (STABLE VERSION) ===");
+console.log("=== SERVER ĐANG KHỞI ĐỘNG (SIMPLE START) ===");
 
 const app = express();
-// Ép kiểu số nguyên cho PORT (quan trọng với Cloud Run)
 const PORT = parseInt(process.env.PORT || '8080');
 const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 const prisma = new PrismaClient();
 
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-
-// === 2. TỰ ĐỘNG KHỞI TẠO DATABASE (Non-blocking) ===
+// === 2. INIT DB (Không chặn app nếu lỗi) ===
 async function initDatabase() {
   try {
     console.log("--> [DB] Đang kiểm tra kết nối...");
     await prisma.$queryRaw`SELECT 1`;
-    console.log("--> [DB] Kết nối Database thành công.");
+    console.log("--> [DB] Kết nối thành công.");
     
-    // Tạo cấu hình mặc định nếu chưa có
     const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
     if (!config) {
-      console.log("--> [DB] Đang tạo cấu hình hệ thống mặc định...");
+      console.log("--> [DB] Tạo config mặc định...");
       await prisma.systemConfig.create({
         data: {
           id: "default_config",
@@ -48,24 +42,22 @@ async function initDatabase() {
       });
     }
   } catch (e) {
-    console.error("--> [DB LỖI] Không thể kết nối DB (Web vẫn chạy ở chế độ hạn chế). Lỗi:", e);
+    console.error("--> [DB LỖI] Web vẫn chạy, nhưng không có DB. Chi tiết:", e);
   }
 }
-// Gọi hàm này nhưng không await để server start ngay lập tức
 initDatabase();
 
-// --- 3. HELPER TẠO API NHANH ---
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+// --- 3. HELPER ---
 const createCrud = (modelName: string, route: string) => {
     // @ts-ignore
     const model = prisma[modelName];
-    
     app.get(`/api/${route}`, async (req, res) => {
-        try {
-            const items = await model.findMany();
-            res.json(items);
-        } catch(e) { res.status(500).json({ error: `Lỗi lấy ${route}` }); }
+        try { res.json(await model.findMany()); } 
+        catch(e) { res.status(500).json({ error: `Lỗi lấy ${route}` }); }
     });
-    
     app.post(`/api/${route}`, async (req, res) => {
         try {
             const data = req.body;
@@ -77,30 +69,22 @@ const createCrud = (modelName: string, route: string) => {
             res.json(item);
         } catch(e) { res.status(500).json({ error: `Lỗi lưu ${route}` }); }
     });
-
     app.delete(`/api/${route}/:id`, async (req, res) => {
-        try {
-            await model.delete({ where: { id: req.params.id } });
-            res.json({ success: true });
-        } catch(e) { res.status(500).json({ error: `Lỗi xóa ${route}` }); }
+        try { await model.delete({ where: { id: req.params.id } }); res.json({ success: true }); } 
+        catch(e) { res.status(500).json({ error: `Lỗi xóa ${route}` }); }
     });
 };
 
-// ==========================================
-// 4. API MODULE: AUTH & USER
-// ==========================================
+// --- 4. API AUTH ---
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     const user = await prisma.user.findUnique({ where: { username } });
     if (!user) return res.status(401).json({ success: false, message: 'Sai tài khoản' });
 
-    let isMatch = false;
-    if (user.password.startsWith('$2')) {
-        isMatch = await bcrypt.compare(password, user.password);
-    } else {
-        isMatch = (password === user.password);
-    }
+    let isMatch = user.password.startsWith('$2') 
+        ? await bcrypt.compare(password, user.password)
+        : (password === user.password);
 
     if (isMatch) {
       const token = jwt.sign({ id: user.id, roles: user.roles }, JWT_SECRET);
@@ -113,10 +97,10 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.get('/api/users', async (req, res) => {
-  try {
-      const users = await prisma.user.findMany({ include: { department: true } });
-      res.json(users.map(({ password, ...u }) => u));
-  } catch (e) { res.status(500).json({error: "Lỗi lấy users"}); }
+    try {
+        const users = await prisma.user.findMany({ include: { department: true } });
+        res.json(users.map(({ password, ...u }) => u));
+    } catch(e) { res.status(500).json({error: "Lỗi"}); }
 });
 
 app.post('/api/users', async (req, res) => {
@@ -135,16 +119,13 @@ app.post('/api/users', async (req, res) => {
     res.json(user);
   } catch (e) { res.status(500).json({ error: "Lỗi lưu User" }); }
 });
+
 app.delete('/api/users/:id', async (req, res) => {
-    try {
-        await prisma.user.delete({ where: { id: req.params.id } });
-        res.json({ success: true });
-    } catch(e) { res.status(500).json({ error: "Lỗi xóa user" }); }
+    try { await prisma.user.delete({ where: { id: req.params.id } }); res.json({ success: true }); }
+    catch(e) { res.status(500).json({ error: "Lỗi xóa user" }); }
 });
 
-// ==========================================
-// 5. API MODULE: CORE DATA
-// ==========================================
+// --- 5. REGISTER CRUD ---
 createCrud('department', 'departments');
 createCrud('salaryFormula', 'formulas');
 createCrud('salaryVariable', 'variables');
@@ -157,16 +138,10 @@ createCrud('holiday', 'holidays');
 createCrud('bonusType', 'bonus-types');
 createCrud('annualBonusPolicy', 'bonus-policies');
 
-// ==========================================
-// 6. API MODULE: COMPLEX LOGIC
-// ==========================================
-
-// --- System Config ---
+// --- 6. OTHER APIS ---
 app.get('/api/config/system', async (req, res) => {
-    try {
-        const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
-        res.json(config || {});
-    } catch(e) { res.json({}); }
+    try { res.json(await prisma.systemConfig.findUnique({ where: { id: "default_config" } }) || {}); } 
+    catch(e) { res.json({}); }
 });
 app.post('/api/config/system', async (req, res) => {
     try {
@@ -180,12 +155,9 @@ app.post('/api/config/system', async (req, res) => {
     } catch(e) { res.status(500).json({error: "Lỗi lưu config"}); }
 });
 
-// --- Ranks & Grades ---
 app.get('/api/ranks', async (req, res) => {
-    try {
-        const ranks = await prisma.salaryRank.findMany({ include: { grades: true } });
-        res.json(ranks);
-    } catch(e) { res.status(500).json({error: "Lỗi lấy ranks"}); }
+    try { res.json(await prisma.salaryRank.findMany({ include: { grades: true } })); } 
+    catch(e) { res.status(500).json({error: "Lỗi"}); }
 });
 app.post('/api/ranks', async (req, res) => {
     try {
@@ -205,31 +177,78 @@ app.post('/api/ranks', async (req, res) => {
             }
         }
         res.json(rank);
-    } catch(e) { res.status(500).json({error: "Lỗi lưu rank"}); }
+    } catch(e) { res.status(500).json({error: "Lỗi"}); }
 });
 
-// --- Attendance ---
 app.get('/api/attendance', async (req, res) => {
     try {
         const { month } = req.query; 
-        const records = await prisma.attendanceRecord.findMany({
+        res.json(await prisma.attendanceRecord.findMany({
             where: month ? { date: { startsWith: month as string } } : {}
-        });
-        res.json(records);
-    } catch(e) { res.status(500).json({error: "Lỗi lấy chấm công"}); }
+        }));
+    } catch(e) { res.status(500).json({error: "Lỗi"}); }
 });
 app.post('/api/attendance', async (req, res) => {
     try {
         const data = req.body; 
         const records = Array.isArray(data) ? data : [data];
-        const results = [];
         for (const rec of records) {
-            const saved = await prisma.attendanceRecord.upsert({
+            await prisma.attendanceRecord.upsert({
                 where: { userId_date: { userId: rec.userId, date: rec.date } },
                 update: rec,
                 create: rec
             });
-            results.push(saved);
         }
-        res.json({ success: true, count: results.length });
-    } catch(e) { res.status
+        res.json({ success: true });
+    } catch(e) { res.status(500).json({ error: "Lỗi" }); }
+});
+
+app.get('/api/salary-records', async (req, res) => {
+    try {
+        const { month } = req.query;
+        res.json(await prisma.salaryRecord.findMany({
+            where: month ? { date: month as string } : {}
+        }));
+    } catch(e) { res.status(500).json({error: "Lỗi"}); }
+});
+app.post('/api/salary-records', async (req, res) => {
+    try {
+        const rec = req.body;
+        const saved = await prisma.salaryRecord.upsert({
+            where: { userId_date: { userId: rec.userId, date: rec.date } },
+            update: rec,
+            create: { ...rec, id: rec.id || `sal_${rec.userId}_${rec.date}` }
+        });
+        res.json(saved);
+    } catch(e) { res.status(500).json({ error: "Lỗi" }); }
+});
+
+app.get('/api/evaluations', async (req, res) => {
+    try { res.json(await prisma.evaluationRequest.findMany({ orderBy: { createdAt: 'desc' } })); } 
+    catch(e) { res.status(500).json({error: "Lỗi"}); }
+});
+app.post('/api/evaluations', async (req, res) => {
+    try { res.json(await prisma.evaluationRequest.create({ data: req.body })); } 
+    catch(e) { res.status(500).json({error: "Lỗi"}); }
+});
+
+// --- 7. SERVE FRONTEND ---
+app.get('/api/ping', (req, res) => { res.json({ status: "OK" }); });
+
+const distPath = path.join(process.cwd(), 'dist');
+if (fs.existsSync(distPath)) {
+    console.log(`[STATIC] Serving dist: ${distPath}`);
+    app.use(express.static(distPath));
+}
+
+app.get('*', (req, res) => {
+    if (fs.existsSync(path.join(distPath, 'index.html'))) {
+        res.sendFile(path.join(distPath, 'index.html'));
+    } else {
+        res.send("<h1>Backend Running.</h1><p>Frontend 'dist' not found.</p>");
+    }
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Server chạy tại cổng ${PORT}`);
+});
