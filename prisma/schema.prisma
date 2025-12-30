@@ -8,7 +8,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- ENUMS ---
+// --- 1. USER & AUTH ---
 enum UserRole {
   ADMIN
   BAN_LANH_DAO
@@ -28,30 +28,6 @@ enum UserStatus {
   PENDING_APPROVAL
 }
 
-enum RecordStatus {
-  DRAFT
-  PENDING
-  PENDING_MANAGER
-  PENDING_GDK
-  PENDING_BLD
-  PENDING_HR
-  APPROVED
-  REJECTED
-}
-
-enum AttendanceType {
-  TIME
-  PIECEWORK
-  DAILY
-  MODE
-  HOLIDAY
-  PAID_LEAVE
-  UNPAID
-  WAITING
-}
-
-// --- CORE MODELS ---
-
 model User {
   id                   String       @id
   username             String       @unique
@@ -64,11 +40,10 @@ model User {
   status               UserStatus   @default(ACTIVE)
   roles                Json
   numberOfDependents   Int          @default(0)
-  
   currentDeptId        String?
   department           Department?  @relation(fields: [currentDeptId], references: [id])
   
-  // Thông tin lương
+  // Lương cơ bản
   paymentType          String       @default("TIME")
   efficiencySalary     Decimal      @default(0) @db.Decimal(18, 2)
   pieceworkUnitPrice   Decimal      @default(0) @db.Decimal(18, 2)
@@ -90,11 +65,31 @@ model Department {
   hrId            String?
   blockDirectorId String?
   users           User[]
-  
   @@map("departments")
 }
 
-// --- ATTENDANCE & SALARY DATA ---
+// --- 2. CHẤM CÔNG & LƯƠNG (CORE) ---
+enum RecordStatus {
+  DRAFT
+  PENDING
+  PENDING_MANAGER
+  PENDING_GDK
+  PENDING_BLD
+  PENDING_HR
+  APPROVED
+  REJECTED
+}
+
+enum AttendanceType {
+  TIME
+  PIECEWORK
+  DAILY
+  MODE
+  HOLIDAY
+  PAID_LEAVE
+  UNPAID
+  WAITING
+}
 
 model AttendanceRecord {
   id                   String         @id @default(cuid())
@@ -143,7 +138,7 @@ model SalaryRecord {
   @@map("salary_records")
 }
 
-// --- CONFIGURATION TABLES (BỔ SUNG MỚI) ---
+// --- 3. CÁC BẢNG CẤU HÌNH (QUAN TRỌNG: Đang bị thiếu) ---
 
 model SystemConfig {
   id                  String   @id @default("default_config")
@@ -155,7 +150,6 @@ model SystemConfig {
   insuranceRules      Json?
   seniorityRules      Json?
   updatedAt           DateTime @updatedAt
-  
   @@map("system_configs")
 }
 
@@ -168,7 +162,6 @@ model SalaryFormula {
   description String?  @db.Text
   status      String   @default("ACTIVE")
   group       String?
-  
   @@map("salary_formulas")
 }
 
@@ -178,17 +171,14 @@ model SalaryVariable {
   code        String   @unique
   group       String
   description String?  @db.Text
-  
   @@map("salary_variables")
 }
 
-// --- Thêm: Lương khoán & Công nhật ---
 model PieceworkConfig {
   id        String   @id @default(cuid())
   code      String   @unique
   name      String
   unitPrice Decimal  @default(0) @db.Decimal(18, 2)
-  
   @@map("piecework_configs")
 }
 
@@ -196,18 +186,15 @@ model DailyWorkItem {
   id        String   @id @default(cuid())
   name      String
   unitPrice Decimal  @default(0) @db.Decimal(18, 2)
-  type      String   // NORMAL, HEAVY...
-  
+  type      String   
   @@map("daily_work_items")
 }
 
-// --- Thêm: Ngày lễ & Thưởng ---
 model Holiday {
   id        String   @id @default(cuid())
   date      String   @unique // YYYY-MM-DD
   name      String
-  rate      Float    @default(3.0) // Hệ số lương
-  
+  rate      Float    @default(3.0)
   @@map("holidays")
 }
 
@@ -216,7 +203,6 @@ model BonusType {
   name      String
   code      String   @unique
   isTaxable Boolean  @default(true)
-  
   @@map("bonus_types")
 }
 
@@ -225,11 +211,11 @@ model AnnualBonusPolicy {
   name        String
   formulaCode String
   condition   String?
-  
   @@map("annual_bonus_policies")
 }
 
-// --- Tiêu chí & Khung lương ---
+// --- 4. TIÊU CHÍ & KHUNG BẬC ---
+
 model CriterionGroup {
   id       String      @id @default(cuid())
   name     String
@@ -271,7 +257,6 @@ model SalaryGrade {
   @@map("salary_grades")
 }
 
-// --- Audit & Request ---
 model EvaluationRequest {
   id              String       @id @default(cuid())
   userId          String
