@@ -6,8 +6,13 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
+// --- IMPORT SEEDER (ĐỂ NẠP DỮ LIỆU) ---
+// Nếu bạn để file seeder.ts ở thư mục gốc thì import thế này:
+import { seedDatabase } from './seeder'; 
+// Nếu bạn để trong src thì sửa thành: import { seedDatabase } from './src/seeder';
+
 // --- 1. GÀI BẪY BẮT LỖI (CRITICAL ERROR TRAP) ---
-// Giúp server không bị crash im lặng, mà sẽ in lỗi ra log
+// Giúp server không bị crash im lặng
 process.on('uncaughtException', (err) => {
   console.error('🔥 LỖI CHẾT NGƯỜI (Uncaught Exception):', err);
 });
@@ -18,7 +23,6 @@ process.on('unhandledRejection', (reason, promise) => {
 console.log("=== SERVER ĐANG KHỞI ĐỘNG (FULL VERSION) ===");
 
 const app = express();
-// Ép kiểu số cho PORT
 const PORT = parseInt(process.env.PORT || '8080');
 const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 const prisma = new PrismaClient();
@@ -27,8 +31,7 @@ const prisma = new PrismaClient();
 async function initDatabase() {
   try {
     console.log("--> [DB] Đang kiểm tra kết nối...");
-    // Thử query nhẹ để xem DB sống không
-    await prisma.$queryRaw`SELECT 1`;
+    await prisma.$queryRaw`SELECT 1`; // Test connection
     console.log("--> [DB] Kết nối Database thành công.");
     
     // Tự động tạo System Config mặc định nếu chưa có
@@ -49,7 +52,7 @@ async function initDatabase() {
     // Tự động tạo Admin mặc định nếu chưa có user nào
     const userCount = await prisma.user.count();
     if (userCount === 0) {
-       console.log("--> [DB] Đang tạo tài khoản Admin mặc định (admin/123)...");
+       console.log("--> [DB] Database trống. Đang tạo Admin mặc định (admin/123)...");
        const salt = await bcrypt.genSalt(10);
        const hashedPassword = await bcrypt.hash("123", salt);
        await prisma.user.create({
@@ -58,7 +61,7 @@ async function initDatabase() {
            username: "admin",
            password: hashedPassword,
            name: "Administrator",
-           roles: ["ADMIN"],
+           roles: ["ADMIN"], // Lưu dạng JSON Array
            status: "ACTIVE"
          }
        });
@@ -69,9 +72,10 @@ async function initDatabase() {
   }
 }
 
-// Gọi hàm này ngay khi server start
+// Gọi hàm khởi tạo
 initDatabase();
 
+// Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -81,6 +85,7 @@ const createCrud = (modelName: string, route: string) => {
     // @ts-ignore
     const model = prisma[modelName];
     
+    // GET ALL
     app.get(`/api/${route}`, async (req, res) => {
         try {
             const items = await model.findMany();
@@ -88,18 +93,24 @@ const createCrud = (modelName: string, route: string) => {
         } catch(e) { res.status(500).json({ error: `Lỗi lấy ${route}` }); }
     });
     
+    // CREATE / UPDATE (Upsert)
     app.post(`/api/${route}`, async (req, res) => {
         try {
             const data = req.body;
+            // Nếu không có ID thì coi như là tạo mới (dùng ID ảo để trigger create)
             const item = await model.upsert({
-                where: { id: data.id || "new_" },
+                where: { id: data.id || "new_record_id" }, 
                 update: data,
                 create: { ...data, id: data.id || `${route}_` + Date.now() }
             });
             res.json(item);
-        } catch(e) { res.status(500).json({ error: `Lỗi lưu ${route}` }); }
+        } catch(e) { 
+            console.error(e);
+            res.status(500).json({ error: `Lỗi lưu ${route}` }); 
+        }
     });
 
+    // DELETE
     app.delete(`/api/${route}/:id`, async (req, res) => {
         try {
             await model.delete({ where: { id: req.params.id } });
@@ -118,7 +129,7 @@ app.post('/api/login', async (req, res) => {
     if (!user) return res.status(401).json({ success: false, message: 'Sai tài khoản' });
 
     let isMatch = false;
-    // Kiểm tra pass mã hóa hoặc pass thường
+    // Hỗ trợ cả pass thường (cho data cũ) và pass mã hóa
     if (user.password.startsWith('$2')) {
         isMatch = await bcrypt.compare(password, user.password);
     } else {
@@ -126,6 +137,7 @@ app.post('/api/login', async (req, res) => {
     }
 
     if (isMatch) {
+      // @ts-ignore
       const token = jwt.sign({ id: user.id, roles: user.roles }, JWT_SECRET);
       // Loại bỏ password khi trả về
       const { password: _, ...userData } = user;
@@ -139,6 +151,7 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
       const users = await prisma.user.findMany({ include: { department: true } });
+      // @ts-ignore
       res.json(users.map(({ password, ...u }) => u));
   } catch (e) { res.status(500).json({error: "Lỗi lấy users"}); }
 });
@@ -184,8 +197,20 @@ createCrud('bonusType', 'bonus-types');
 createCrud('annualBonusPolicy', 'bonus-policies');
 
 // ==========================================
-// 6. API MODULE: COMPLEX LOGIC
+// 6. API MODULE: COMPLEX LOGIC & SEEDER
 // ==========================================
+
+// --- API NẠP DỮ LIỆU TỰ ĐỘNG (QUAN TRỌNG) ---
+app.get('/api/seed-data-secret', async (req, res) => {
+    try {
+      console.log("--> Đang chạy lệnh nạp dữ liệu...");
+      await seedDatabase();
+      res.json({ success: true, message: "Dữ liệu đã được nạp thành công!" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ success: false, error: "Lỗi nạp dữ liệu" });
+    }
+});
 
 // --- System Config ---
 app.get('/api/config/system', async (req, res) => {
@@ -221,6 +246,7 @@ app.post('/api/ranks', async (req, res) => {
             update: rankData,
             create: { ...rankData, id: rankData.id || "rank_" + Date.now() }
         });
+        // Lưu Grades con
         if (grades && Array.isArray(grades)) {
             for (const g of grades) {
                 await prisma.salaryGrade.upsert({
@@ -323,7 +349,7 @@ app.get('*', (req, res) => {
     }
 });
 
-// Lắng nghe cổng 0.0.0.0 để Cloud Run nhận diện
+// Lắng nghe cổng
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Backend HRM đã chạy thành công tại cổng ${PORT}`);
 });
