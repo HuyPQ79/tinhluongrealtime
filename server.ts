@@ -6,15 +6,26 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
+// --- 1. GÀI BẪY BẮT LỖI (CRITICAL ERROR TRAP) ---
+// Giúp server không bị crash im lặng, mà sẽ in lỗi ra log
+process.on('uncaughtException', (err) => {
+  console.error('🔥 LỖI CHẾT NGƯỜI (Uncaught Exception):', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🔥 LỖI PROMISE (Unhandled Rejection):', reason);
+});
+
 console.log("=== SERVER ĐANG KHỞI ĐỘNG (FINAL VERSION) ===");
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '8080');
 const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 const prisma = new PrismaClient();
-// === TỰ ĐỘNG ĐỒNG BỘ DATABASE (Thêm đoạn này vào) ===
+
+// === TỰ ĐỘNG ĐỒNG BỘ DATABASE ===
 async function initDatabase() {
   try {
+    console.log("--> [DB] Đang kiểm tra kết nối...");
     // Thử query nhẹ để xem DB sống không
     await prisma.$queryRaw`SELECT 1`;
     console.log("--> [DB] Kết nối Database thành công.");
@@ -34,18 +45,17 @@ async function initDatabase() {
       });
     }
   } catch (e) {
-    console.error("--> [DB LỖI] Không thể kết nối hoặc bảng chưa tồn tại.", e);
-    // Lưu ý: Trên Cloud Run, bạn cần chạy 'npx prisma db push' từ máy local 
-    // hoặc thêm vào Dockerfile nếu dùng SQLite/Postgres container
+    console.error("--> [DB LỖI] Không thể kết nối DB (Server vẫn sẽ chạy tiếp). Lỗi:", e);
   }
 }
+
 // Gọi hàm này ngay khi server start
 initDatabase();
+
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // --- HELPER: Generic CRUD ---
-// Hàm này giúp tạo nhanh API cho các bảng đơn giản
 const createCrud = (modelName: string, route: string) => {
     // @ts-ignore
     const model = prisma[modelName];
@@ -104,8 +114,10 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.get('/api/users', async (req, res) => {
-  const users = await prisma.user.findMany({ include: { department: true } });
-  res.json(users.map(({ password, ...u }) => u));
+  try {
+      const users = await prisma.user.findMany({ include: { department: true } });
+      res.json(users.map(({ password, ...u }) => u));
+  } catch (e) { res.status(500).json({error: "Lỗi lấy users"}); }
 });
 
 app.post('/api/users', async (req, res) => {
@@ -138,16 +150,15 @@ createCrud('salaryVariable', 'variables');
 createCrud('criterionGroup', 'criteria/groups');
 createCrud('criterion', 'criteria/items');
 createCrud('auditLog', 'audit');
-createCrud('pieceworkConfig', 'piecework-configs'); // MỚI
-createCrud('dailyWorkItem', 'daily-work-items'); // MỚI
-createCrud('holiday', 'holidays'); // MỚI
-createCrud('bonusType', 'bonus-types'); // MỚI
-createCrud('annualBonusPolicy', 'bonus-policies'); // MỚI
+createCrud('pieceworkConfig', 'piecework-configs');
+createCrud('dailyWorkItem', 'daily-work-items');
+createCrud('holiday', 'holidays');
+createCrud('bonusType', 'bonus-types');
+createCrud('annualBonusPolicy', 'bonus-policies');
 
 // ==========================================
 // 3. COMPLEX MODULES
 // ==========================================
-
 // --- System Config ---
 app.get('/api/config/system', async (req, res) => {
     const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
@@ -246,7 +257,7 @@ app.post('/api/evaluations', async (req, res) => {
 // 4. STATIC & STARTUP
 // ==========================================
 app.get('/api/ping', (req, res) => {
-    res.json({ status: "OK", mode: "FULL_SCHEMA" });
+    res.json({ status: "OK", mode: "FINAL_VERSION" });
 });
 
 const distPath = path.join(process.cwd(), 'dist');
@@ -261,6 +272,7 @@ app.get('*', (req, res) => {
     }
 });
 
+// Chuyển sang lắng nghe '0.0.0.0' rõ ràng để Cloud Run nhận diện
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Backend HRM (All Tables) đã chạy tại cổng ${PORT}`);
 });
