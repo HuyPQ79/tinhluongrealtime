@@ -43,7 +43,7 @@ model User {
   currentDeptId        String?
   department           Department?  @relation(fields: [currentDeptId], references: [id])
   
-  // Lương cơ bản
+  // Lương cơ bản & Cấu hình cá nhân
   paymentType          String       @default("TIME")
   efficiencySalary     Decimal      @default(0) @db.Decimal(18, 2)
   pieceworkUnitPrice   Decimal      @default(0) @db.Decimal(18, 2)
@@ -54,6 +54,7 @@ model User {
   evaluationRequests   EvaluationRequest[]
   salaryRecords        SalaryRecord[]
   
+  // Ánh xạ vào bảng 'users'
   @@map("users")
 }
 
@@ -65,6 +66,8 @@ model Department {
   hrId            String?
   blockDirectorId String?
   users           User[]
+  
+  // Ánh xạ vào bảng 'departments'
   @@map("departments")
 }
 
@@ -110,6 +113,7 @@ model AttendanceRecord {
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
+  // Ánh xạ vào bảng 'attendance_records' (Bảng chuẩn trong DB của bạn)
   @@unique([userId, date])
   @@map("attendance_records")
 }
@@ -134,11 +138,12 @@ model SalaryRecord {
   calculationLog         Json?
   updatedAt              DateTime     @updatedAt
 
+  // Ánh xạ vào bảng 'salary_records'
   @@unique([userId, date])
   @@map("salary_records")
 }
 
-// --- 3. CÁC BẢNG CẤU HÌNH (QUAN TRỌNG: Đang bị thiếu) ---
+// --- 3. CÁC BẢNG CẤU HÌNH ---
 
 model SystemConfig {
   id                  String   @id @default("default_config")
@@ -150,6 +155,8 @@ model SystemConfig {
   insuranceRules      Json?
   seniorityRules      Json?
   updatedAt           DateTime @updatedAt
+  
+  // Ánh xạ vào bảng 'system_configs' (Đã thấy trong ảnh DB của bạn)
   @@map("system_configs")
 }
 
@@ -162,6 +169,8 @@ model SalaryFormula {
   description String?  @db.Text
   status      String   @default("ACTIVE")
   group       String?
+  
+  // Ánh xạ vào bảng 'salary_formulas'
   @@map("salary_formulas")
 }
 
@@ -171,6 +180,8 @@ model SalaryVariable {
   code        String   @unique
   group       String
   description String?  @db.Text
+  
+  // Ánh xạ vào bảng 'salary_variables'
   @@map("salary_variables")
 }
 
@@ -179,6 +190,8 @@ model PieceworkConfig {
   code      String   @unique
   name      String
   unitPrice Decimal  @default(0) @db.Decimal(18, 2)
+  
+  // Ánh xạ vào bảng 'piecework_configs'
   @@map("piecework_configs")
 }
 
@@ -187,14 +200,18 @@ model DailyWorkItem {
   name      String
   unitPrice Decimal  @default(0) @db.Decimal(18, 2)
   type      String   
+  
+  // Ánh xạ vào bảng 'daily_work_items'
   @@map("daily_work_items")
 }
 
 model Holiday {
-  id        String   @id @default(cuid())
-  date      String   @unique // YYYY-MM-DD
-  name      String
-  rate      Float    @default(3.0)
+  id      String   @id @default(cuid())
+  date    String   @unique // YYYY-MM-DD
+  name    String
+  rate    Float    @default(3.0)
+  
+  // Ánh xạ vào bảng 'holidays'
   @@map("holidays")
 }
 
@@ -203,6 +220,8 @@ model BonusType {
   name      String
   code      String   @unique
   isTaxable Boolean  @default(true)
+  
+  // Ánh xạ vào bảng 'bonus_types'
   @@map("bonus_types")
 }
 
@@ -211,6 +230,8 @@ model AnnualBonusPolicy {
   name        String
   formulaCode String
   condition   String?
+  
+  // Ánh xạ vào bảng 'annual_bonus_policies'
   @@map("annual_bonus_policies")
 }
 
@@ -221,6 +242,8 @@ model CriterionGroup {
   name     String
   weight   Float       @default(0)
   items    Criterion[]
+  
+  // Ánh xạ vào bảng 'criterion_groups'
   @@map("criterion_groups")
 }
 
@@ -234,6 +257,8 @@ model Criterion {
   proofRequired  Boolean           @default(false)
   groupId        String?
   group          CriterionGroup?   @relation(fields: [groupId], references: [id])
+  
+  // Ánh xạ vào bảng 'criteria'
   @@map("criteria")
 }
 
@@ -244,6 +269,8 @@ model SalaryRank {
   baseSalary   Decimal       @default(0) @db.Decimal(18, 2)
   allowance    Decimal       @default(0) @db.Decimal(18, 2)
   grades       SalaryGrade[]
+  
+  // Ánh xạ vào bảng 'salary_ranks'
   @@map("salary_ranks")
 }
 
@@ -254,6 +281,8 @@ model SalaryGrade {
   amount     Decimal    @default(0) @db.Decimal(18, 2)
   rankId     String
   rank       SalaryRank @relation(fields: [rankId], references: [id], onDelete: Cascade)
+  
+  // Ánh xạ vào bảng 'salary_grades'
   @@map("salary_grades")
 }
 
@@ -272,6 +301,8 @@ model EvaluationRequest {
   status          RecordStatus @default(PENDING)
   createdAt       DateTime     @default(now())
   rejectionReason String?      @db.Text
+  
+  // Ánh xạ vào bảng 'evaluation_requests' (Bảng chuẩn trong DB của bạn)
   @@map("evaluation_requests")
 }
 
@@ -282,5 +313,7 @@ model AuditLog {
   details        String   @db.Text
   isConfigAction Boolean  @default(false)
   timestamp      DateTime @default(now())
+  
+  // Ánh xạ vào bảng 'audit_logs'
   @@map("audit_logs")
 }

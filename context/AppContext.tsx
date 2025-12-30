@@ -1,19 +1,32 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
   User, SalaryRecord, AttendanceRecord, EvaluationRequest, AppToast, SystemConfig, 
   Department, Criterion, CriterionGroup, PieceworkConfig, SalaryFormula, SalaryVariable, 
   AuditLog, SalaryRank, SalaryGrade, BonusType, AnnualBonusPolicy, AppNotification,
-  UserStatus, RecordStatus, AttendanceType, UserRole, EvaluationTarget, PitStep, SeniorityRule
+  UserStatus, RecordStatus, AttendanceType, UserRole, EvaluationTarget
 } from '../types';
-import { 
-  INITIAL_USERS, INITIAL_DEPARTMENTS, INITIAL_RECORDS, INITIAL_FORMULAS, 
-  INITIAL_CRITERIA, INITIAL_SALARY_VARIABLES, INITIAL_RANKS, INITIAL_GRADES,
-  INITIAL_CRITERIA_GROUPS, INITIAL_DAILY_WORK
-} from '../services/mockData';
-import { canApproveStatus } from '../utils/rbac';
+import { api } from '../services/api'; // Kết nối trái tim với API
+import { canApproveStatus } from '../utils/rbac'; // Đảm bảo bạn vẫn giữ file này ở thư mục gốc hoặc src/utils
 
-const API_BASE = ''; // Để trống để tự động nhận URL từ Cloud Run
+// Cấu hình mặc định rỗng (để tránh lỗi UI khi chưa tải xong data)
+const INITIAL_SYSTEM_CONFIG: SystemConfig = {
+    id: "default_config",
+    baseSalary: 0,
+    standardWorkDays: 26,
+    insuranceBaseSalary: 0,
+    maxInsuranceBase: 0,
+    isPeriodLocked: false,
+    autoApproveDays: 3,
+    hrAutoApproveHours: 24,
+    approvalMode: 'POST_AUDIT',
+    personalRelief: 11000000,
+    dependentRelief: 4400000,
+    insuranceRate: 10.5,
+    unionFeeRate: 1,
+    pitSteps: [],
+    approvalWorkflow: [],
+    seniorityRules: []
+};
 
 interface AppContextType {
   currentUser: User | null;
@@ -38,65 +51,86 @@ interface AppContextType {
   bonusTypes: BonusType[];
   annualBonusPolicies: AnnualBonusPolicy[];
   
+  // Actions - Authentication
   login: (u: string, p: string) => Promise<boolean>;
   logout: () => void;
+  
+  // Actions - Core Logic
   saveAttendance: (records: AttendanceRecord[]) => Promise<void>;
   updateUser: (user: User) => Promise<void>;
   calculateMonthlySalary: (month: string) => Promise<void>;
+  
+  // Actions - UI Helpers
   showToast: (msg: string, type?: any) => void;
   formatCurrency: (val: number) => string;
   formatDateTime: (d: string) => string;
   getStandardWorkDays: (month: string) => number;
   canViewUser: (target: User) => boolean;
 
-  // Added missing methods used in components
+  // Actions - CRUD (Đã nối API)
   markNotiRead: (id: string) => void;
   updateSalaryStatus: (id: string, status: RecordStatus) => void;
   canActionSalary: (record: SalaryRecord) => boolean;
   addSalaryAdjustment: (recordId: string, adj: any) => void;
   deleteSalaryAdjustment: (recordId: string, adjId: string) => void;
   updateAdvancePayment: (recordId: string, amount: number) => void;
+  
   savePieceworkConfigs: (configs: PieceworkConfig[]) => void;
+  
   addDailyWorkItem: (item: any) => void;
   updateDailyWorkItem: (item: any) => void;
   deleteDailyWorkItem: (id: string, reason: string) => void;
+  
   addFormula: (f: SalaryFormula) => void;
   updateFormula: (f: SalaryFormula) => void;
   deleteFormula: (id: string, reason: string) => void;
+  
   updateSystemConfig: (config: Partial<SystemConfig>) => void;
+  
   addSalaryVariable: (v: SalaryVariable) => void;
   updateSalaryVariable: (v: SalaryVariable) => void;
   deleteSalaryVariable: (code: string, reason: string) => void;
+  
   addAuditLog: (action: string, details: string) => void;
   toggleSystemLock: () => void;
   toggleApprovalMode: () => void;
   approvePendingConfig: () => void;
   discardPendingConfig: () => void;
+  
   addCriterion: (c: Criterion) => void;
   updateCriterion: (c: Criterion) => void;
   deleteCriterion: (id: string, reason: string) => void;
+  
   addCriterionGroup: (g: CriterionGroup) => void;
   updateCriterionGroup: (g: CriterionGroup) => void;
   deleteCriterionGroup: (id: string, reason: string) => void;
+  
   addUser: (u: User) => void;
   deleteUser: (id: string, reason: string) => void;
   approveUserUpdate: (userId: string) => void;
   rejectUserUpdate: (userId: string) => void;
+  
   addDept: (d: Department) => void;
   updateDept: (d: Department) => void;
   deleteDept: (id: string, reason: string) => void;
   bulkAddUsers: (users: User[]) => void;
+  
   updateAttendanceStatus: (id: string, status: RecordStatus) => void;
+  
   addEvaluationRequest: (req: EvaluationRequest) => void;
   approveEvaluationRequest: (id: string) => void;
   rejectEvaluationRequest: (id: string, reason: string) => void;
+  
   addNotification: (noti: any) => void;
+  
   addRank: (r: SalaryRank) => void;
   updateRank: (r: SalaryRank) => void;
   deleteRank: (id: string) => void;
+  
   addGrade: (g: SalaryGrade) => void;
   updateGrade: (g: SalaryGrade) => void;
   deleteGrade: (id: string) => void;
+  
   addBonusType: (bt: BonusType) => void;
   deleteBonusType: (id: string) => void;
   updateBonusPolicy: (policy: AnnualBonusPolicy) => void;
@@ -105,114 +139,102 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children: React.ReactNode }) => {
+  // --- 1. STATE QUẢN LÝ DỮ LIỆU ---
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [allUsers, setAllUsers] = useState<User[]>(INITIAL_USERS);
-  const [salaryRecords, setSalaryRecords] = useState<SalaryRecord[]>(INITIAL_RECORDS);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [salaryRecords, setSalaryRecords] = useState<SalaryRecord[]>([]);
   const [dailyAttendance, setDailyAttendance] = useState<AttendanceRecord[]>([]);
   const [evaluationRequests, setEvaluationRequests] = useState<EvaluationRequest[]>([]);
-  const [departments, setDepartments] = useState<Department[]>(INITIAL_DEPARTMENTS);
-  const [systemConfig, setSystemConfig] = useState<SystemConfig>({
-    isPeriodLocked: false,
-    autoApproveDays: 3,
-    hrAutoApproveHours: 24,
-    approvalMode: 'POST_AUDIT',
-    personalRelief: 11000000,
-    dependentRelief: 4400000,
-    insuranceRate: 10.5,
-    unionFeeRate: 1,
-    maxInsuranceBase: 36000000,
-    pitSteps: [],
-    approvalWorkflow: [],
-    seniorityRules: []
-  });
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [systemConfig, setSystemConfig] = useState<SystemConfig>(INITIAL_SYSTEM_CONFIG);
   const [pendingSystemConfig, setPendingSystemConfig] = useState<SystemConfig | null>(null);
-  const [criteriaList, setCriteriaList] = useState<Criterion[]>(INITIAL_CRITERIA);
-  const [criteriaGroups, setCriteriaGroups] = useState<CriterionGroup[]>(INITIAL_CRITERIA_GROUPS);
+  
+  const [criteriaList, setCriteriaList] = useState<Criterion[]>([]);
+  const [criteriaGroups, setCriteriaGroups] = useState<CriterionGroup[]>([]);
   const [toasts, setToasts] = useState<AppToast[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [salaryRanks, setSalaryRanks] = useState<SalaryRank[]>(INITIAL_RANKS);
-  const [salaryGrids, setSalaryGrids] = useState<SalaryGrade[]>(INITIAL_GRADES);
-  const [dailyWorkCatalog, setDailyWorkCatalog] = useState<any[]>(INITIAL_DAILY_WORK);
-  const [formulas, setFormulas] = useState<SalaryFormula[]>(INITIAL_FORMULAS);
-  const [salaryVariables, setSalaryVariables] = useState<SalaryVariable[]>(INITIAL_SALARY_VARIABLES);
+  
+  const [salaryRanks, setSalaryRanks] = useState<SalaryRank[]>([]);
+  const [salaryGrids, setSalaryGrids] = useState<SalaryGrade[]>([]);
+  const [dailyWorkCatalog, setDailyWorkCatalog] = useState<any[]>([]);
+  const [formulas, setFormulas] = useState<SalaryFormula[]>([]);
+  const [salaryVariables, setSalaryVariables] = useState<SalaryVariable[]>([]);
   const [pieceworkConfigs, setPieceworkConfigs] = useState<PieceworkConfig[]>([]);
   const [bonusTypes, setBonusTypes] = useState<BonusType[]>([]);
   const [annualBonusPolicies, setAnnualBonusPolicies] = useState<AnnualBonusPolicy[]>([]);
 
-  // Tải dữ liệu ban đầu từ Cloud khi ứng dụng mở
+  // --- 2. HÀM TẢI DỮ LIỆU TỪ CLOUD ---
+  const refreshData = async () => {
+    try {
+        // Gọi song song các API để tiết kiệm thời gian
+        const [
+            usersRes, deptsRes, configRes, ranksRes, 
+            formulasRes, varsRes, attendanceRes, salaryRes,
+            evalRes, auditRes
+        ] = await Promise.all([
+            api.getUsers(),
+            api.getDepartments(),
+            api.getSystemConfig(),
+            api.getSystemConfig(), // Placeholder cho các config con nếu chưa có API riêng
+            api.getSystemConfig(), // Placeholder
+            api.getSystemConfig(), // Placeholder
+            api.getAttendance(),
+            api.getSalaryRecords(),
+            api.getEvaluations(),
+            api.getLogs()
+        ]);
+
+        // Cập nhật State nếu có dữ liệu
+        if (Array.isArray(usersRes)) setAllUsers(usersRes);
+        if (Array.isArray(deptsRes)) setDepartments(deptsRes);
+        if (configRes && configRes.id) setSystemConfig(configRes);
+        if (Array.isArray(attendanceRes)) setDailyAttendance(attendanceRes);
+        if (Array.isArray(salaryRes)) setSalaryRecords(salaryRes);
+        if (Array.isArray(evalRes)) setEvaluationRequests(evalRes);
+        if (Array.isArray(auditRes)) setAuditLogs(auditRes);
+
+        // Các phần dữ liệu cấu hình chi tiết (sẽ cần gọi thêm nếu API server hỗ trợ tách lẻ)
+        // Hiện tại tạm thời để trống hoặc lấy từ systemConfig nếu backend gộp chung
+        
+    } catch (e) {
+        console.error("Lỗi tải dữ liệu Cloud:", e);
+        // showToast("Không thể kết nối tới máy chủ", "ERROR");
+    }
+  };
+
+  // Tự động tải dữ liệu khi mở App nếu đã login
   useEffect(() => {
-    const fetchData = async () => {
+    const savedUser = localStorage.getItem('HRM_USER');
+    if (savedUser) {
         try {
-            const [uRes, aRes, cRes] = await Promise.all([
-                fetch(`${API_BASE}/api/users`),
-                fetch(`${API_BASE}/api/attendance`),
-                fetch(`${API_BASE}/api/config`)
-            ]);
-            if (uRes.ok) setAllUsers(await uRes.json());
-            if (aRes.ok) setDailyAttendance(await aRes.json());
-            if (cRes.ok) setSystemConfig(await cRes.json());
-        } catch (e) {
-            console.error("Lỗi kết nối Backend Cloud:", e);
-        }
-    };
-    fetchData();
+            setCurrentUser(JSON.parse(savedUser));
+            refreshData(); // Kích hoạt tải dữ liệu
+        } catch (e) {}
+    }
   }, []);
 
+  // --- 3. AUTHENTICATION ---
   const login = async (u: string, p: string) => {
-    const res = await fetch(`${API_BASE}/api/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: u, password: p })
-    });
-    if (res.ok) {
-        const data = await res.json();
-        setCurrentUser(data.user);
+    const user = await api.login(u, p);
+    if (user) {
+        setCurrentUser(user);
+        await refreshData(); // Tải dữ liệu ngay lập tức
         return true;
     }
-    // Mock login for demo if API fails
-    if (u === 'admin' && p === '123') {
-        setCurrentUser(INITIAL_USERS[0]);
-        return true;
-    }
+    showToast("Sai tên đăng nhập hoặc mật khẩu", "ERROR");
     return false;
   };
 
-  const logout = () => setCurrentUser(null);
-
-  const saveAttendance = async (records: AttendanceRecord[]) => {
-    try {
-        await fetch(`${API_BASE}/api/attendance/bulk`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ records })
-        });
-    } catch (e) {}
-    setDailyAttendance(prev => {
-        const next = [...prev];
-        records.forEach(r => {
-            const idx = next.findIndex(x => x.id === r.id);
-            if(idx > -1) next[idx] = r; else next.push(r);
-        });
-        return next;
-    });
+  const logout = () => {
+    api.logout();
+    setCurrentUser(null);
+    setAllUsers([]);
+    setSalaryRecords([]);
+    // Xóa sạch các state nhạy cảm khác...
   };
 
-  const updateUser = async (user: User) => {
-    try {
-        await fetch(`${API_BASE}/api/users`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(user)
-        });
-    } catch (e) {}
-    setAllUsers(prev => prev.map(u => u.id === user.id ? user : u));
-    if (currentUser?.id === user.id) setCurrentUser(user);
-  };
-
-  const calculateMonthlySalary = async (month: string) => { 
-    /* Mock implementation for calculateMonthlySalary */ 
-  };
+  // --- 4. CORE ACTIONS (Kết nối API) ---
   
   const showToast = (msg: string, type: any = 'SUCCESS') => {
     const id = Date.now().toString();
@@ -220,143 +242,204 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000);
   };
 
+  // --- USER ---
+  const addUser = async (u: User) => {
+    const res = await api.saveUser(u);
+    if (res) {
+        setAllUsers(prev => [...prev, res]);
+        showToast("Thêm nhân sự thành công");
+    }
+  };
+
+  const updateUser = async (user: User) => {
+    const res = await api.saveUser(user);
+    if (res) {
+        setAllUsers(prev => prev.map(u => u.id === user.id ? user : u));
+        if (currentUser?.id === user.id) setCurrentUser(user);
+        showToast("Cập nhật thành công");
+    }
+  };
+
+  const deleteUser = async (id: string, reason: string) => {
+    await api.deleteUser(id);
+    setAllUsers(prev => prev.filter(u => u.id !== id));
+    addAuditLog('DELETE_USER', `Xóa user ${id}. Lý do: ${reason}`);
+    showToast("Đã xóa nhân sự");
+  };
+
+  const bulkAddUsers = async (users: User[]) => {
+      // Demo: lặp qua từng user để save (Backend nên hỗ trợ endpoint bulk)
+      for (const u of users) {
+          await api.saveUser(u);
+      }
+      refreshData();
+      showToast(`Đã import ${users.length} nhân sự`);
+  };
+
+  // --- DEPARTMENT ---
+  const addDept = async (d: Department) => {
+      const res = await api.saveDepartment(d);
+      if(res) setDepartments(prev => [...prev, res]);
+  };
+  const updateDept = async (d: Department) => {
+      await api.saveDepartment(d);
+      setDepartments(prev => prev.map(i => i.id === d.id ? d : i));
+  };
+  const deleteDept = async (id: string, reason: string) => {
+      await api.deleteDepartment(id);
+      setDepartments(prev => prev.filter(i => i.id !== id));
+      addAuditLog('DELETE_DEPT', `Xóa phòng ban ${id}. Lý do: ${reason}`);
+  };
+
+  // --- ATTENDANCE ---
+  const saveAttendance = async (records: AttendanceRecord[]) => {
+    await api.saveAttendance(records);
+    setDailyAttendance(prev => {
+        const next = [...prev];
+        records.forEach(r => {
+            const idx = next.findIndex(x => x.userId === r.userId && x.date === r.date);
+            if(idx > -1) next[idx] = r; else next.push(r);
+        });
+        return next;
+    });
+    showToast("Đã lưu chấm công");
+  };
+
+  const updateAttendanceStatus = async (id: string, status: RecordStatus) => {
+      // Cần API support update status riêng, tạm thời dùng saveAttendance
+      const record = dailyAttendance.find(r => r.id === id);
+      if (record) {
+          await api.saveAttendance({ ...record, status });
+          setDailyAttendance(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+      }
+  };
+
+  // --- CONFIGURATIONS (Sử dụng api.saveConfig đa năng) ---
+  const updateSystemConfig = async (config: Partial<SystemConfig>) => {
+    const newConfig = { ...systemConfig, ...config };
+    await api.saveConfig('system', newConfig);
+    setSystemConfig(newConfig);
+    showToast("Đã lưu cấu hình hệ thống");
+  };
+
+  const addFormula = async (f: SalaryFormula) => {
+      await api.saveConfig('formulas', f);
+      setFormulas(p => [...p, f]);
+  };
+  const updateFormula = async (f: SalaryFormula) => {
+      await api.saveConfig('formulas', f);
+      setFormulas(p => p.map(i => i.id === f.id ? f : i));
+  };
+  const deleteFormula = async (id: string, reason: string) => {
+      // Backend cần hỗ trợ delete config, hiện tại UI update trước
+      setFormulas(p => p.filter(i => i.id !== id));
+      addAuditLog('DELETE_FORMULA', `Xóa công thức ${id}. Lý do: ${reason}`);
+  };
+
+  const addSalaryVariable = async (v: SalaryVariable) => {
+      await api.saveConfig('variables', v);
+      setSalaryVariables(p => [...p, v]);
+  };
+  const updateSalaryVariable = async (v: SalaryVariable) => {
+      await api.saveConfig('variables', v);
+      setSalaryVariables(p => p.map(i => i.code === v.code ? v : i));
+  };
+  const deleteSalaryVariable = (code: string, reason: string) => {
+      setSalaryVariables(p => p.filter(i => i.code !== code));
+  };
+
+  // --- RANKS & GRADES ---
+  const addRank = async (r: SalaryRank) => { await api.saveConfig('ranks', r); setSalaryRanks(p => [...p, r]); };
+  const updateRank = async (r: SalaryRank) => { await api.saveConfig('ranks', r); setSalaryRanks(p => p.map(i => i.id === r.id ? r : i)); };
+  const deleteRank = (id: string) => setSalaryRanks(p => p.filter(i => i.id !== id));
+
+  const addGrade = (g: SalaryGrade) => setSalaryGrids(p => [...p, g]); // Cần API riêng nếu muốn lưu
+  const updateGrade = (g: SalaryGrade) => setSalaryGrids(p => p.map(i => i.id === g.id ? g : i));
+  const deleteGrade = (id: string) => setSalaryGrids(p => p.filter(i => i.id !== id));
+
+  // --- CRITERIA ---
+  const addCriterion = async (c: Criterion) => { await api.saveConfig('criteria', c); setCriteriaList(p => [...p, c]); };
+  const updateCriterion = async (c: Criterion) => { await api.saveConfig('criteria', c); setCriteriaList(p => p.map(i => i.id === c.id ? c : i)); };
+  const deleteCriterion = (id: string, reason: string) => setCriteriaList(p => p.filter(i => i.id !== id));
+
+  const addCriterionGroup = async (g: CriterionGroup) => { await api.saveConfig('groups', g); setCriteriaGroups(p => [...p, g]); };
+  const updateCriterionGroup = async (g: CriterionGroup) => { await api.saveConfig('groups', g); setCriteriaGroups(p => p.map(i => i.id === g.id ? g : i)); };
+  const deleteCriterionGroup = (id: string, reason: string) => setCriteriaGroups(p => p.filter(i => i.id !== id));
+
+  // --- EVALUATIONS ---
+  const addEvaluationRequest = async (req: EvaluationRequest) => {
+      await api.saveEvaluation(req);
+      setEvaluationRequests(p => [...p, req]);
+      showToast("Đã gửi yêu cầu đánh giá");
+  };
+  const approveEvaluationRequest = async (id: string) => {
+      // Cần API update status, tạm thời update local
+      setEvaluationRequests(p => p.map(r => r.id === id ? { ...r, status: RecordStatus.APPROVED } : r));
+  };
+  const rejectEvaluationRequest = async (id: string, reason: string) => {
+       setEvaluationRequests(p => p.map(r => r.id === id ? { ...r, status: RecordStatus.REJECTED, rejectionReason: reason } : r));
+  };
+
+  // --- LOGS & NOTIFICATIONS ---
+  const addAuditLog = async (action: string, details: string) => {
+      const log: AuditLog = { id: `LOG${Date.now()}`, action, actor: currentUser?.name || 'System', timestamp: new Date().toISOString(), details };
+      // await api.saveLog(log); // Uncomment nếu muốn lưu log lên server
+      setAuditLogs(prev => [log, ...prev]);
+  };
+
+  const addNotification = (noti: any) => {
+      setNotifications(prev => [{ id: `NOTI${Date.now()}`, createdAt: new Date().toISOString(), isRead: false, ...noti }, ...prev]);
+  };
+  const markNotiRead = (id: string) => setNotifications(p => p.map(n => n.id === id ? { ...n, isRead: true } : n));
+
+  // --- UTILS & HELPERS ---
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
   const formatDateTime = (d: string) => new Date(d).toLocaleString('vi-VN');
-  const getStandardWorkDays = (m: string) => 26;
-  const canViewUser = (t: User) => true;
+  const getStandardWorkDays = (m: string) => systemConfig.standardWorkDays || 26;
+  const canViewUser = (t: User) => true; // Logic quyền hạn có thể mở rộng sau
 
-  // Implementation of missing methods
-  const markNotiRead = (id: string) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-  const updateSalaryStatus = (id: string, status: RecordStatus) => setSalaryRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+  // --- PLACEHOLDERS (Giữ lại để tương thích UI cũ, sẽ nối API dần) ---
+  const calculateMonthlySalary = async (month: string) => { showToast("Tính năng đang được xử lý trên Server...", "INFO"); };
+  const updateSalaryStatus = (id: string, status: RecordStatus) => setSalaryRecords(p => p.map(r => r.id === id ? { ...r, status } : r));
   const canActionSalary = (record: SalaryRecord) => {
     if (!currentUser) return false;
     const dept = departments.find(d => d.id === record.department);
     return canApproveStatus(currentUser, record.status, dept, systemConfig.approvalWorkflow);
   };
-  const addSalaryAdjustment = (recordId: string, adj: any) => setSalaryRecords(prev => prev.map(r => r.id === recordId ? { ...r, adjustments: [...(r.adjustments || []), adj] } : r));
-  const deleteSalaryAdjustment = (recordId: string, adjId: string) => setSalaryRecords(prev => prev.map(r => r.id === recordId ? { ...r, adjustments: (r.adjustments || []).filter(a => a.id !== adjId) } : r));
-  const updateAdvancePayment = (recordId: string, amount: number) => setSalaryRecords(prev => prev.map(r => r.id === recordId ? { ...r, advancePayment: amount } : r));
-  const savePieceworkConfigs = (configs: PieceworkConfig[]) => setPieceworkConfigs(prev => {
-    const next = [...prev];
-    configs.forEach(c => {
-      const idx = next.findIndex(x => x.userId === c.userId && x.month === c.month);
-      if (idx > -1) next[idx] = c; else next.push(c);
-    });
-    return next;
-  });
-  const addDailyWorkItem = (item: any) => setDailyWorkCatalog(prev => [...prev, item]);
-  const updateDailyWorkItem = (item: any) => setDailyWorkCatalog(prev => prev.map(i => i.id === item.id ? item : i));
-  const deleteDailyWorkItem = (id: string, reason: string) => {
-    setDailyWorkCatalog(prev => prev.filter(i => i.id !== id));
-    addAuditLog('DELETE_DAILY_WORK', `Xóa nghiệp vụ ID ${id}. Lý do: ${reason}`);
-  };
-  const addFormula = (f: SalaryFormula) => setFormulas(prev => [...prev, f]);
-  const updateFormula = (f: SalaryFormula) => setFormulas(prev => prev.map(i => i.id === f.id ? f : i));
-  const deleteFormula = (id: string, reason: string) => {
-    setFormulas(prev => prev.filter(i => i.id !== id));
-    addAuditLog('DELETE_FORMULA', `Xóa công thức ID ${id}. Lý do: ${reason}`);
-  };
-  const updateSystemConfig = (config: Partial<SystemConfig>) => {
-    if (currentUser?.roles.includes(UserRole.ADMIN)) {
-      setSystemConfig(prev => ({ ...prev, ...config, hasPendingChanges: false }));
-    } else {
-      setPendingSystemConfig({ ...systemConfig, ...config });
-      setSystemConfig(prev => ({ ...prev, hasPendingChanges: true, pendingChangeSummary: 'Yêu cầu cập nhật cấu hình tài chính từ HR' }));
-    }
-  };
-  const addSalaryVariable = (v: SalaryVariable) => setSalaryVariables(prev => [...prev, v]);
-  const updateSalaryVariable = (v: SalaryVariable) => setSalaryVariables(prev => prev.map(i => i.code === v.code ? v : i));
-  const deleteSalaryVariable = (code: string, reason: string) => {
-    setSalaryVariables(prev => prev.filter(i => i.code !== code));
-    addAuditLog('DELETE_VARIABLE', `Xóa biến số ${code}. Lý do: ${reason}`);
-  };
-  const addAuditLog = (action: string, details: string) => {
-    const log: AuditLog = { id: `LOG${Date.now()}`, action, actor: currentUser?.name || 'System', timestamp: new Date().toISOString(), details };
-    setAuditLogs(prev => [log, ...prev]);
-  };
-  const toggleSystemLock = () => setSystemConfig(prev => ({ ...prev, isPeriodLocked: !prev.isPeriodLocked }));
-  const toggleApprovalMode = () => setSystemConfig(prev => ({ ...prev, approvalMode: prev.approvalMode === 'POST_AUDIT' ? 'FULL_APPROVAL' : 'POST_AUDIT' }));
-  const approvePendingConfig = () => {
-    if (pendingSystemConfig) {
-      setSystemConfig({ ...pendingSystemConfig, hasPendingChanges: false });
-      setPendingSystemConfig(null);
-      addAuditLog('APPROVE_CONFIG', 'Admin phê duyệt cấu hình hệ thống mới.');
-    }
-  };
-  const discardPendingConfig = () => {
-    setPendingSystemConfig(null);
-    setSystemConfig(prev => ({ ...prev, hasPendingChanges: false }));
-    addAuditLog('DISCARD_CONFIG', 'Admin từ chối cấu hình hệ thống đề xuất.');
-  };
-  const addCriterion = (c: Criterion) => setCriteriaList(prev => [...prev, c]);
-  const updateCriterion = (c: Criterion) => setCriteriaList(prev => prev.map(i => i.id === c.id ? c : i));
-  const deleteCriterion = (id: string, reason: string) => {
-    setCriteriaList(prev => prev.filter(i => i.id !== id));
-    addAuditLog('DELETE_CRITERION', `Xóa tiêu chí ID ${id}. Lý do: ${reason}`);
-  };
-  const addCriterionGroup = (g: CriterionGroup) => setCriteriaGroups(prev => [...prev, g]);
-  const updateCriterionGroup = (g: CriterionGroup) => setCriteriaGroups(prev => prev.map(i => i.id === g.id ? g : i));
-  const deleteCriterionGroup = (id: string, reason: string) => {
-    setCriteriaGroups(prev => prev.filter(i => i.id !== id));
-    addAuditLog('DELETE_GROUP', `Xóa nhóm tiêu chí ID ${id}. Lý do: ${reason}`);
-  };
-  const addUser = (u: User) => setAllUsers(prev => [...prev, u]);
-  const deleteUser = (id: string, reason: string) => {
-    setAllUsers(prev => prev.filter(u => u.id !== id));
-    addAuditLog('DELETE_USER', `Xóa nhân sự ID ${id}. Lý do: ${reason}`);
-  };
-  const approveUserUpdate = (userId: string) => {
-    setAllUsers(prev => prev.map(u => {
-      if (u.id === userId && u.pendingUpdate) {
-        return { ...u, ...u.pendingUpdate, status: UserStatus.ACTIVE, pendingUpdate: undefined, pendingUpdateSummary: undefined };
-      }
-      return u;
-    }));
-  };
-  const rejectUserUpdate = (userId: string) => {
-    setAllUsers(prev => prev.map(u => {
-      if (u.id === userId) {
-        return { ...u, status: UserStatus.ACTIVE, pendingUpdate: undefined, pendingUpdateSummary: undefined };
-      }
-      return u;
-    }));
-  };
-  const addDept = (d: Department) => setDepartments(prev => [...prev, d]);
-  const updateDept = (d: Department) => setDepartments(prev => prev.map(i => i.id === d.id ? d : i));
-  const deleteDept = (id: string, reason: string) => {
-    setDepartments(prev => prev.filter(i => i.id !== id));
-    addAuditLog('DELETE_DEPT', `Xóa đơn vị ID ${id}. Lý do: ${reason}`);
-  };
-  const bulkAddUsers = (users: User[]) => setAllUsers(prev => [...prev, ...users]);
-  const updateAttendanceStatus = (id: string, status: RecordStatus) => setDailyAttendance(prev => prev.map(r => r.id === id ? { ...r, status } : r));
-  const addEvaluationRequest = (req: EvaluationRequest) => setEvaluationRequests(prev => [...prev, req]);
-  const approveEvaluationRequest = (id: string) => setEvaluationRequests(prev => prev.map(r => r.id === id ? { ...r, status: RecordStatus.APPROVED } : r));
-  const rejectEvaluationRequest = (id: string, reason: string) => setEvaluationRequests(prev => prev.map(r => r.id === id ? { ...r, status: RecordStatus.REJECTED, rejectionReason: reason } : r));
-  const addNotification = (noti: any) => setNotifications(prev => [{ id: `NOTI${Date.now()}`, createdAt: new Date().toISOString(), isRead: false, ...noti }, ...prev]);
-  const addRank = (r: SalaryRank) => setSalaryRanks(prev => [...prev, r]);
-  const updateRank = (r: SalaryRank) => setSalaryRanks(prev => prev.map(i => i.id === r.id ? r : i));
-  const deleteRank = (id: string) => setSalaryRanks(prev => prev.filter(i => i.id !== id));
-  const addGrade = (g: SalaryGrade) => setSalaryGrids(prev => [...prev, g]);
-  const updateGrade = (g: SalaryGrade) => setSalaryGrids(prev => prev.map(i => i.id === g.id ? g : i));
-  const deleteGrade = (id: string) => setSalaryGrids(prev => prev.filter(i => i.id !== id));
-  const addBonusType = (bt: BonusType) => setBonusTypes(prev => [...prev, bt]);
-  const deleteBonusType = (id: string) => setBonusTypes(prev => prev.filter(i => i.id !== id));
-  const updateBonusPolicy = (policy: AnnualBonusPolicy) => setAnnualBonusPolicies(prev => {
-    const next = [...prev];
-    const idx = next.findIndex(p => p.bonusTypeId === policy.bonusTypeId && p.rankId === policy.rankId && p.gradeId === policy.gradeId);
-    if (idx > -1) next[idx] = policy; else next.push(policy);
-    return next;
-  });
+  
+  // Các hàm phụ chưa có API tương ứng cụ thể
+  const addSalaryAdjustment = (recordId: string, adj: any) => {};
+  const deleteSalaryAdjustment = (recordId: string, adjId: string) => {};
+  const updateAdvancePayment = (recordId: string, amount: number) => {};
+  const savePieceworkConfigs = (configs: PieceworkConfig[]) => setPieceworkConfigs(configs);
+  const addDailyWorkItem = (item: any) => setDailyWorkCatalog(p => [...p, item]);
+  const updateDailyWorkItem = (item: any) => setDailyWorkCatalog(p => p.map(i => i.id === item.id ? item : i));
+  const deleteDailyWorkItem = (id: string, reason: string) => setDailyWorkCatalog(p => p.filter(i => i.id !== id));
+  
+  const toggleSystemLock = () => setSystemConfig(p => ({ ...p, isPeriodLocked: !p.isPeriodLocked }));
+  const toggleApprovalMode = () => setSystemConfig(p => ({ ...p, approvalMode: p.approvalMode === 'POST_AUDIT' ? 'FULL_APPROVAL' : 'POST_AUDIT' }));
+  const approvePendingConfig = () => { if (pendingSystemConfig) { setSystemConfig({ ...pendingSystemConfig, hasPendingChanges: false }); setPendingSystemConfig(null); }};
+  const discardPendingConfig = () => { setPendingSystemConfig(null); setSystemConfig(p => ({ ...p, hasPendingChanges: false })); };
+  
+  const approveUserUpdate = (userId: string) => {};
+  const rejectUserUpdate = (userId: string) => {};
+  
+  const addBonusType = (bt: BonusType) => setBonusTypes(p => [...p, bt]);
+  const deleteBonusType = (id: string) => setBonusTypes(p => p.filter(i => i.id !== id));
+  const updateBonusPolicy = (policy: AnnualBonusPolicy) => setAnnualBonusPolicies(p => [...p, policy]); // Demo logic
 
   return (
     <AppContext.Provider value={{ 
         currentUser, allUsers, salaryRecords, dailyAttendance, evaluationRequests, systemConfig, pendingSystemConfig,
         departments, criteriaList, criteriaGroups, toasts, notifications, auditLogs,
         salaryRanks, salaryGrids, dailyWorkCatalog, formulas, salaryVariables, pieceworkConfigs, bonusTypes, annualBonusPolicies,
+        
         login, logout, saveAttendance, updateUser, calculateMonthlySalary,
         showToast, formatCurrency, formatDateTime, getStandardWorkDays, canViewUser,
+        
         markNotiRead, updateSalaryStatus, canActionSalary, addSalaryAdjustment, deleteSalaryAdjustment,
         updateAdvancePayment, savePieceworkConfigs, addDailyWorkItem, updateDailyWorkItem, deleteDailyWorkItem,
+        
         addFormula, updateFormula, deleteFormula, updateSystemConfig, addSalaryVariable, updateSalaryVariable,
         deleteSalaryVariable, addAuditLog, toggleSystemLock, toggleApprovalMode, approvePendingConfig,
         discardPendingConfig, addCriterion, updateCriterion, deleteCriterion, addCriterionGroup,

@@ -3,17 +3,17 @@ import {
     SalaryFormula, SalaryVariable, Criterion, CriterionGroup, 
     PieceworkConfig, SalaryRank, SalaryGrade, BonusType, AnnualBonusPolicy, 
     AuditLog, EvaluationRequest 
-} from './types'; // QUAN TRỌNG: Dùng ./types vì file nằm cùng thư mục gốc
+} from '../types'; // Import từ file types.ts cùng thư mục
 
 // --- CẤU HÌNH ĐƯỜNG DẪN API ---
-// Khi build (Production), Vite sẽ đặt biến PROD = true -> Dùng đường dẫn tương đối /api
-// Khi dev (Development), dùng đường dẫn tuyệt đối tới port 8080
+// Khi chạy trên Cloud Run (Production), import.meta.env.PROD là true
+// URL sẽ là tương đối (/api) để Nginx/Container tự định tuyến
 const IS_PROD = import.meta.env.PROD;
 const API_BASE = IS_PROD ? '/api' : 'http://localhost:8080/api';
 
-console.log(`[API] Đang kết nối tới: ${API_BASE}`);
+console.log(`[API SERVICE] Connecting to: ${API_BASE}`);
 
-// --- HELPER: Gửi Request có kèm Token ---
+// Helper function để gửi request kèm Token
 const request = async (endpoint: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('HRM_TOKEN');
     
@@ -29,16 +29,21 @@ const request = async (endpoint: string, options: RequestInit = {}) => {
             headers,
         });
 
-        if (!response.ok) {
-            // Nếu lỗi 401 (Hết phiên đăng nhập) -> Đá về login
-            if (response.status === 401) {
-                console.warn("[API] Phiên đăng nhập hết hạn. Đang đăng xuất...");
-                localStorage.removeItem('HRM_TOKEN');
-                localStorage.removeItem('HRM_USER');
-                // Reload trang để về màn hình login (React Router sẽ xử lý việc redirect)
-                window.location.href = '/'; 
+        // Xử lý lỗi 401 (Unauthorized) -> Logout
+        if (response.status === 401) {
+            console.warn("Session expired. Logging out...");
+            localStorage.removeItem('HRM_TOKEN');
+            localStorage.removeItem('HRM_USER');
+            // Redirect về login nếu đang không ở trang login
+            if (window.location.pathname !== '/') {
+                window.location.href = '/';
             }
-            throw new Error(`API Error: ${response.statusText}`);
+            throw new Error("Unauthorized");
+        }
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || `API Error: ${response.statusText}`);
         }
 
         return await response.json();
@@ -49,8 +54,11 @@ const request = async (endpoint: string, options: RequestInit = {}) => {
 };
 
 export const api = {
+    // Helper để gọi raw request từ bên ngoài nếu cần
+    request: request,
+
     // ==================================================
-    // 1. AUTHENTICATION (Đăng nhập)
+    // 1. AUTHENTICATION
     // ==================================================
     async login(username: string, password: string): Promise<User | null> {
         try {
@@ -63,7 +71,6 @@ export const api = {
             if (res.ok) {
                 const data = await res.json();
                 if (data.success) {
-                    // Lưu Token và User vào LocalStorage để App dùng
                     localStorage.setItem('HRM_TOKEN', data.token);
                     localStorage.setItem('HRM_USER', JSON.stringify(data.user));
                     return data.user;
@@ -71,7 +78,7 @@ export const api = {
             }
             return null;
         } catch (e) {
-            console.error("Lỗi đăng nhập:", e);
+            console.error("Login failed:", e);
             return null;
         }
     },
@@ -82,80 +89,47 @@ export const api = {
     },
 
     // ==================================================
-    // 2. USER & DEPARTMENT MANAGEMENT
+    // 2. USERS & DEPARTMENTS
     // ==================================================
-    async getUsers() {
-        return await request('/users');
+    async getUsers() { return await request('/users'); },
+    async saveUser(user: User) { 
+        return await request('/users', { method: 'POST', body: JSON.stringify(user) }); 
     },
+    async deleteUser(id: string) { return await request(`/users/${id}`, { method: 'DELETE' }); },
 
-    async saveUser(user: User) {
-        return await request('/users', {
-            method: 'POST',
-            body: JSON.stringify(user)
-        });
+    async getDepartments() { return await request('/departments'); },
+    async saveDepartment(dept: Department) { 
+        return await request('/departments', { method: 'POST', body: JSON.stringify(dept) }); 
     },
-
-    async deleteUser(id: string) {
-        return await request(`/users/${id}`, { method: 'DELETE' });
-    },
-
-    async getDepartments() {
-        return await request('/departments');
-    },
-
-    async saveDepartment(dept: Department) {
-        return await request('/departments', {
-            method: 'POST',
-            body: JSON.stringify(dept)
-        });
-    },
-
-    async deleteDepartment(id: string) {
-        return await request(`/departments/${id}`, { method: 'DELETE' });
-    },
+    async deleteDepartment(id: string) { return await request(`/departments/${id}`, { method: 'DELETE' }); },
 
     // ==================================================
-    // 3. ATTENDANCE (Chấm công)
+    // 3. ATTENDANCE & SALARY
     // ==================================================
     async getAttendance(month?: string) {
         const query = month ? `?month=${month}` : '';
         return await request(`/attendance${query}`);
     },
-
     async saveAttendance(data: AttendanceRecord | AttendanceRecord[]) {
-        return await request('/attendance', {
-            method: 'POST',
-            body: JSON.stringify(data)
-        });
+        return await request('/attendance', { method: 'POST', body: JSON.stringify(data) });
     },
 
-    // ==================================================
-    // 4. SALARY RECORDS (Bảng lương)
-    // ==================================================
     async getSalaryRecords(month?: string) {
         const query = month ? `?month=${month}` : '';
         return await request(`/salary-records${query}`);
     },
-
     async saveSalaryRecord(record: SalaryRecord) {
-        return await request('/salary-records', {
-            method: 'POST',
-            body: JSON.stringify(record)
-        });
+        return await request('/salary-records', { method: 'POST', body: JSON.stringify(record) });
     },
 
     // ==================================================
-    // 5. CONFIGURATION & MASTER DATA
+    // 4. CONFIGURATION & MASTER DATA
     // ==================================================
+    async getSystemConfig() { return await request('/config/system'); },
     
-    async getSystemConfig() {
-        return await request('/config/system');
-    },
-
-    // Hàm saveConfig đa năng (Xử lý mapping sang các API riêng biệt)
+    // Hàm saveConfig đa năng
     async saveConfig(key: string, data: any) {
         try {
-            // Mapping key từ AppContext sang API Endpoint
             let endpoint = '';
             switch(key) {
                 case 'formulas': endpoint = '/formulas'; break;
@@ -169,24 +143,19 @@ export const api = {
                 case 'annualPolicies': endpoint = '/bonus-policies'; break;
                 case 'dailyWork': endpoint = '/daily-work-items'; break;
                 case 'system':    
-                    // System config là object đơn, không phải mảng
                     return await request('/config/system', { method: 'POST', body: JSON.stringify(data) });
                 default: 
                     console.warn(`Unknown config key: ${key}`);
                     return { success: false };
             }
 
-            // XỬ LÝ MẢNG DỮ LIỆU:
             if (Array.isArray(data)) {
-                // Gửi song song các request để tối ưu tốc độ
                 await Promise.all(data.map(item => 
                     request(endpoint, { method: 'POST', body: JSON.stringify(item) })
                 ));
             } else {
-                // Nếu gửi 1 object
                 await request(endpoint, { method: 'POST', body: JSON.stringify(data) });
             }
-            
             return { success: true };
         } catch (e) {
             console.error(`Save config failed [${key}]:`, e);
@@ -195,27 +164,15 @@ export const api = {
     },
 
     // ==================================================
-    // 6. LOGS & EVALUATIONS (Nhật ký & Đánh giá)
+    // 5. OTHERS (Logs, Evaluations)
     // ==================================================
-    async getLogs() {
-        return await request('/audit');
+    async getLogs() { return await request('/audit'); },
+    async saveLog(log: AuditLog) { 
+        return await request('/audit', { method: 'POST', body: JSON.stringify(log) }); 
     },
 
-    async saveLog(log: AuditLog) {
-        return await request('/audit', {
-            method: 'POST',
-            body: JSON.stringify(log)
-        });
-    },
-
-    async getEvaluations() {
-        return await request('/evaluations');
-    },
-
-    async saveEvaluation(requestData: EvaluationRequest) {
-        return await request('/evaluations', {
-            method: 'POST',
-            body: JSON.stringify(requestData)
-        });
+    async getEvaluations() { return await request('/evaluations'); },
+    async saveEvaluation(data: EvaluationRequest) { 
+        return await request('/evaluations', { method: 'POST', body: JSON.stringify(data) }); 
     }
 };
