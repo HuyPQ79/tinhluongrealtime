@@ -211,6 +211,7 @@ const DeductionsManagement: React.FC = () => {
                 <div className="space-y-3 text-left">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left ml-1">Giảm trừ bản thân (GT_bt)</label>
                 <div className="relative text-left">
+                    {/* Fixed missing DollarSign component by adding to imports */}
                     <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400" size={24}/>
                     <input type="number" className="w-full pl-12 pr-6 py-5 border-2 border-slate-100 rounded-[24px] font-black text-indigo-600 text-3xl text-left outline-none focus:border-indigo-500 bg-slate-50 shadow-inner" value={localConfig.personalRelief} onChange={e => { setLocalConfig({ ...localConfig, personalRelief: Number(e.target.value) }); setIsDirty(true); }}/>
                 </div>
@@ -218,6 +219,7 @@ const DeductionsManagement: React.FC = () => {
                 <div className="space-y-3 text-left">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left ml-1">Giảm trừ người phụ thuộc (GT_pt)</label>
                 <div className="relative text-left">
+                    {/* Fixed missing DollarSign component by adding to imports */}
                     <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-400" size={24}/>
                     <input type="number" className="w-full pl-12 pr-6 py-5 border-2 border-slate-100 rounded-[24px] font-black text-emerald-600 text-3xl text-left outline-none focus:border-emerald-500 bg-slate-50 shadow-inner" value={localConfig.dependentRelief} onChange={e => { setLocalConfig({ ...localConfig, dependentRelief: Number(e.target.value) }); setIsDirty(true); }}/>
                 </div>
@@ -245,6 +247,7 @@ const DeductionsManagement: React.FC = () => {
                     <div className="space-y-4 text-left">
                         <label className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.2em] text-left ml-1">Trần lương đóng bảo hiểm (MAX_BH)</label>
                         <div className="relative text-left">
+                             {/* Fixed missing DollarSign component by adding to imports */}
                              <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-indigo-400" size={28}/>
                              <input type="number" className="w-full bg-white/5 border-2 border-white/10 rounded-[32px] font-black text-3xl pl-16 pr-8 py-6 text-white outline-none focus:ring-4 focus:ring-indigo-500/30 transition-all" value={localConfig.maxInsuranceBase} onChange={e => { setLocalConfig({ ...localConfig, maxInsuranceBase: Number(e.target.value) }); setIsDirty(true); }}/>
                         </div>

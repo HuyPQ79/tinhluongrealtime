@@ -1,6 +1,5 @@
-
 {
-  "name": "HRM Enterprise Cloud System",
-  "description": "Hệ thống quản lý nhân sự quy mô lớn vận hành trên Google Cloud Run & Cloud SQL. Tối ưu hóa Indexing và Snapshots dữ liệu.",
+  "name": "HRM Real-time Salary & Performance",
+  "description": "Hệ thống quản lý lương, đánh giá hiệu suất và chấm công Real-time dành cho doanh nghiệp quy mô lớn với cơ chế phân quyền động và công thức lương linh hoạt.",
   "requestFramePermissions": []
 }
