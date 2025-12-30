@@ -159,17 +159,42 @@ app.get('/api/users', async (req, res) => {
 app.post('/api/users', async (req, res) => {
   try {
     const data = req.body;
-    // Mã hóa mật khẩu nếu có nhập mới
+    
+    // 1. Xử lý Mật khẩu
     if (data.password && data.password.trim() !== "") {
         const salt = await bcrypt.genSalt(10);
         data.password = await bcrypt.hash(data.password, salt);
-    } else { delete data.password; }
+    } else { 
+        delete data.password; // Nếu không gửi pass thì giữ nguyên pass cũ
+    }
     
+    // 2. TỰ ĐỘNG ĐIỀN THÔNG TIN CÒN THIẾU (Fix lỗi thêm mới)
+    // Nếu không chọn quyền, mặc định là NHAN_VIEN
+    if (!data.roles || data.roles.length === 0) {
+        data.roles = ["NHAN_VIEN"];
+    }
+    // Các mặc định khác để tránh lỗi Database
+    if (!data.paymentType) data.paymentType = "TIME"; // Mặc định lương thời gian
+    if (!data.efficiencySalary) data.efficiencySalary = 0;
+    if (!data.pieceworkUnitPrice) data.pieceworkUnitPrice = 0;
+    if (!data.reservedBonusAmount) data.reservedBonusAmount = 0;
+    if (!data.probationRate) data.probationRate = 100;
+    if (!data.numberOfDependents) data.numberOfDependents = 0;
+    if (!data.status) data.status = "ACTIVE";
+    
+    // 3. Lưu vào DB
     const user = await prisma.user.upsert({
       where: { id: data.id || "new_" + Date.now() },
       update: data,
       create: { ...data, id: data.id || "user_" + Date.now() }
     });
+    
+    res.json(user);
+  } catch (e) { 
+      console.error("Lỗi lưu User:", e); // In lỗi ra log để dễ soi
+      res.status(500).json({ error: "Lỗi lưu User. Vui lòng kiểm tra lại dữ liệu nhập." }); 
+  }
+});
     res.json(user);
   } catch (e) { res.status(500).json({ error: "Lỗi lưu User" }); }
 });
