@@ -113,7 +113,7 @@ model AttendanceRecord {
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
-  // Ánh xạ vào bảng 'attendance_records' (Bảng chuẩn trong DB của bạn)
+  // Ánh xạ vào bảng 'attendance_records'
   @@unique([userId, date])
   @@map("attendance_records")
 }
@@ -156,7 +156,7 @@ model SystemConfig {
   seniorityRules      Json?
   updatedAt           DateTime @updatedAt
   
-  // Ánh xạ vào bảng 'system_configs' (Đã thấy trong ảnh DB của bạn)
+  // Ánh xạ vào bảng 'system_configs'
   @@map("system_configs")
 }
 
@@ -302,7 +302,7 @@ model EvaluationRequest {
   createdAt       DateTime     @default(now())
   rejectionReason String?      @db.Text
   
-  // Ánh xạ vào bảng 'evaluation_requests' (Bảng chuẩn trong DB của bạn)
+  // Ánh xạ vào bảng 'evaluation_requests'
   @@map("evaluation_requests")
 }
 
