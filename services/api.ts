@@ -3,11 +3,11 @@ import {
     SalaryFormula, SalaryVariable, Criterion, CriterionGroup, 
     PieceworkConfig, SalaryRank, SalaryGrade, BonusType, AnnualBonusPolicy, 
     AuditLog, EvaluationRequest 
-} from '../types';
+} from './types'; // QUAN TRỌNG: Dùng ./types vì file nằm cùng thư mục gốc
 
 // --- CẤU HÌNH ĐƯỜNG DẪN API ---
-// Nếu đang chạy trên Cloud (Production) -> Dùng đường dẫn tương đối /api
-// Nếu đang chạy dưới máy (Development) -> Trỏ thẳng vào port 8080
+// Khi build (Production), Vite sẽ đặt biến PROD = true -> Dùng đường dẫn tương đối /api
+// Khi dev (Development), dùng đường dẫn tuyệt đối tới port 8080
 const IS_PROD = import.meta.env.PROD;
 const API_BASE = IS_PROD ? '/api' : 'http://localhost:8080/api';
 
@@ -32,9 +32,11 @@ const request = async (endpoint: string, options: RequestInit = {}) => {
         if (!response.ok) {
             // Nếu lỗi 401 (Hết phiên đăng nhập) -> Đá về login
             if (response.status === 401) {
+                console.warn("[API] Phiên đăng nhập hết hạn. Đang đăng xuất...");
                 localStorage.removeItem('HRM_TOKEN');
                 localStorage.removeItem('HRM_USER');
-                // window.location.href = '/#/login'; // Bỏ comment nếu muốn auto redirect
+                // Reload trang để về màn hình login (React Router sẽ xử lý việc redirect)
+                window.location.href = '/'; 
             }
             throw new Error(`API Error: ${response.statusText}`);
         }
@@ -158,7 +160,7 @@ export const api = {
             switch(key) {
                 case 'formulas': endpoint = '/formulas'; break;
                 case 'criteria': endpoint = '/criteria/items'; break;
-                case 'groups':   endpoint = '/criteria/groups'; break; // Lưu ý: AppContext cần sửa key này nếu chưa khớp
+                case 'groups':   endpoint = '/criteria/groups'; break;
                 case 'variables':endpoint = '/variables'; break;
                 case 'ranks':    endpoint = '/ranks'; break;
                 case 'piecework':endpoint = '/piecework-configs'; break;
@@ -175,10 +177,8 @@ export const api = {
             }
 
             // XỬ LÝ MẢNG DỮ LIỆU:
-            // Vì AppContext thường gửi TOÀN BỘ danh sách (Array),
-            // nhưng API backend của chúng ta thiết kế để lưu từng item (Upsert).
-            // Ta sẽ gửi từng request song song (Promise.all) để đảm bảo dữ liệu đồng bộ.
             if (Array.isArray(data)) {
+                // Gửi song song các request để tối ưu tốc độ
                 await Promise.all(data.map(item => 
                     request(endpoint, { method: 'POST', body: JSON.stringify(item) })
                 ));
