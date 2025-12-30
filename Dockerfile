@@ -1,7 +1,7 @@
 # Sử dụng Node 20
 FROM node:20-slim
 
-# Cài OpenSSL (cần cho Prisma hoạt động)
+# Cài OpenSSL & CA Certificates (Bắt buộc cho Cloud SQL & Prisma)
 RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -12,23 +12,20 @@ COPY . .
 # 1. Cài đặt thư viện
 RUN npm install
 
-# 2. Tạo Prisma Client (Để code hiểu cấu trúc DB)
+# 2. Tạo Prisma Client
 RUN npx prisma generate
 
-# 3. Build giao diện React (Tạo thư mục dist)
+# 3. Build giao diện React
 RUN npm run build
 
 # Thiết lập biến môi trường
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# Mở cổng 8080
+# Mở cổng
 EXPOSE 8080
 
-# --- LỆNH KHỞI ĐỘNG (QUAN TRỌNG NHẤT) ---
-# Ý nghĩa: 
-# 1. "npx prisma db push": Ép Database tạo các bảng mới (SystemConfig, Holiday...)
-# 2. "--accept-data-loss": Chấp nhận ghi đè cấu trúc cũ (cần thiết cho bản Dev/Internal)
-# 3. "&&": Nếu bước 1 xong thì mới làm bước 2
-# 4. "npx tsx server.ts": Chạy server backend
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npx tsx server.ts"]
+# --- LỆNH KHỞI ĐỘNG (ĐÃ SỬA ĐỔI) ---
+# Thay '&&' bằng ';' để dù DB lỗi thì Server vẫn chạy tiếp
+# Thêm '|| true' để chặn lỗi thoát chương trình
+CMD ["sh", "-c", "echo '--> [1/2] Đang cập nhật Database...'; npx prisma db push --accept-data-loss || echo '--> ⚠️ LỖI CẬP NHẬT DB (BỎ QUA ĐỂ CHẠY SERVER)'; echo '--> [2/2] Khởi động Server...'; npx tsx server.ts"]
