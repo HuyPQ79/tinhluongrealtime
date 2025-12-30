@@ -1,31 +1,34 @@
-# Sử dụng Node 20
+# 1. Dùng Node 20 (bản Slim cho nhẹ)
 FROM node:20-slim
 
-# Cài đặt thư viện hệ thống cần thiết (OpenSSL cho Prisma)
+# 2. Cài thư viện hệ thống (Bắt buộc cho Prisma & Cloud SQL)
 RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy toàn bộ source code
-COPY . .
+# 3. Copy file định nghĩa trước để tận dụng Cache
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
 
-# 1. Cài đặt toàn bộ thư viện (bao gồm cả devDependencies để có tsx)
+# 4. Cài đặt thư viện (Install toàn bộ để có tsx)
 RUN npm install
 
-# 2. Tạo Prisma Client (Generate code để server hiểu DB)
+# 5. Tạo Prisma Client
 RUN npx prisma generate
 
-# 3. Build giao diện React (Tạo folder dist)
-RUN npm run build
+# 6. Copy toàn bộ code
+COPY . .
 
-# Thiết lập môi trường
+# 7. Build giao diện React (Sẽ tạo ra thư mục dist)
+# Tăng bộ nhớ cho Node để tránh lỗi "Heap out of memory" khi build
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
+
+# 8. Cấu hình biến môi trường
 ENV NODE_ENV=production
 ENV PORT=8080
-
-# Mở cổng
 EXPOSE 8080
 
-# --- LỆNH KHỞI ĐỘNG CẢI TIẾN ---
-# Dùng trực tiếp binary của tsx để tránh lỗi npx
-# Tăng giới hạn bộ nhớ cho Node.js lên 512MB (hoặc 1GB tùy cấu hình Cloud Run của bạn) để tránh bị Crash khi khởi động
-CMD ["node", "--max-old-space-size=1024", "./node_modules/tsx/dist/cli.mjs", "server.ts"]
+# --- LỆNH KHỞI ĐỘNG CHIẾN LƯỢC ---
+# Không dùng "npx tsx" nữa.
+# Gọi trực tiếp file thực thi trong node_modules để đảm bảo 100% chạy được.
+CMD ["node", "node_modules/tsx/dist/cli.mjs", "server.ts"]
