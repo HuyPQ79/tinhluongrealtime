@@ -1,7 +1,7 @@
 # 1. Dùng Node 20
 FROM node:20-slim
 
-# 2. Cài thư viện hệ thống (Bắt buộc cho Prisma & Cloud SQL)
+# 2. Cài thư viện hệ thống
 RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -10,23 +10,23 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
 
-# 4. Cài đặt TOÀN BỘ thư viện (Vì ta đã gộp hết vào dependencies)
-RUN npm install
+# 4. QUAN TRỌNG: Xóa node_modules rác nếu lỡ copy vào, sau đó cài mới
+RUN rm -rf node_modules && npm install
 
-# 5. Generate Prisma Client
+# 5. Generate Prisma
 RUN npx prisma generate
 
-# 6. Copy code nguồn
+# 6. Copy toàn bộ code
 COPY . .
 
-# 7. Build Web (Tăng RAM để tránh lỗi build)
+# 7. Build Web
+# Tăng RAM để tránh crash
 RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
-# 8. Môi trường & Cổng
+# 8. Cấu hình
 ENV NODE_ENV=production
 ENV PORT=8080
 EXPOSE 8080
 
-# 9. Lệnh khởi động ĐƠN GIẢN NHẤT
-# Nó sẽ chạy lệnh "tsx server.ts" đã khai báo trong package.json
+# 9. Khởi động (Dùng npm start để gọi tsx server.ts)
 CMD ["npm", "start"]
