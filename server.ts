@@ -6,8 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-// --- 1. GÀI BẪY BẮT LỖI (CRITICAL ERROR TRAP) ---
-// Giúp server không bị crash im lặng, mà sẽ in lỗi ra log
+// --- 1. GÀI BẪY BẮT LỖI (Giúp Server không bị sập im lặng) ---
 process.on('uncaughtException', (err) => {
   console.error('🔥 LỖI CHẾT NGƯỜI (Uncaught Exception):', err);
 });
@@ -15,22 +14,23 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('🔥 LỖI PROMISE (Unhandled Rejection):', reason);
 });
 
-console.log("=== SERVER ĐANG KHỞI ĐỘNG (FINAL VERSION) ===");
+console.log("=== SERVER ĐANG KHỞI ĐỘNG (FINAL STABLE VERSION) ===");
 
 const app = express();
+// Ép kiểu số cho PORT
 const PORT = parseInt(process.env.PORT || '8080');
 const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 const prisma = new PrismaClient();
 
-// === TỰ ĐỘNG ĐỒNG BỘ DATABASE ===
+// === 2. TỰ ĐỘNG KHỞI TẠO DATABASE ===
 async function initDatabase() {
   try {
     console.log("--> [DB] Đang kiểm tra kết nối...");
-    // Thử query nhẹ để xem DB sống không
+    // Query nhẹ để test kết nối
     await prisma.$queryRaw`SELECT 1`;
     console.log("--> [DB] Kết nối Database thành công.");
     
-    // Tự động tạo System Config mặc định nếu chưa có
+    // Tự động tạo System Config mặc định nếu bảng trống
     const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
     if (!config) {
       console.log("--> [DB] Đang tạo cấu hình hệ thống mặc định...");
@@ -45,17 +45,16 @@ async function initDatabase() {
       });
     }
   } catch (e) {
-    console.error("--> [DB LỖI] Không thể kết nối DB (Server vẫn sẽ chạy tiếp). Lỗi:", e);
+    console.error("--> [DB LỖI] Không thể kết nối DB (Server vẫn sẽ chạy tiếp để phục vụ Web). Lỗi:", e);
   }
 }
-
-// Gọi hàm này ngay khi server start
+// Chạy ngay khi start
 initDatabase();
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// --- HELPER: Generic CRUD ---
+// --- 3. CÁC HÀM API CRUD CHUNG ---
 const createCrud = (modelName: string, route: string) => {
     // @ts-ignore
     const model = prisma[modelName];
@@ -88,7 +87,7 @@ const createCrud = (modelName: string, route: string) => {
 };
 
 // ==========================================
-// 1. AUTH & USER
+// 4. API MODULE: AUTH & USER
 // ==========================================
 app.post('/api/login', async (req, res) => {
   try {
@@ -97,6 +96,7 @@ app.post('/api/login', async (req, res) => {
     if (!user) return res.status(401).json({ success: false, message: 'Sai tài khoản' });
 
     let isMatch = false;
+    // Kiểm tra pass mã hóa hoặc pass thường
     if (user.password.startsWith('$2')) {
         isMatch = await bcrypt.compare(password, user.password);
     } else {
@@ -105,6 +105,7 @@ app.post('/api/login', async (req, res) => {
 
     if (isMatch) {
       const token = jwt.sign({ id: user.id, roles: user.roles }, JWT_SECRET);
+      // Loại bỏ password khi trả về
       const { password: _, ...userData } = user;
       res.json({ success: true, token, user: userData });
     } else {
@@ -123,6 +124,7 @@ app.get('/api/users', async (req, res) => {
 app.post('/api/users', async (req, res) => {
   try {
     const data = req.body;
+    // Mã hóa mật khẩu nếu có nhập mới
     if (data.password && data.password.trim() !== "") {
         const salt = await bcrypt.genSalt(10);
         data.password = await bcrypt.hash(data.password, salt);
@@ -142,7 +144,7 @@ app.delete('/api/users/:id', async (req, res) => {
 });
 
 // ==========================================
-// 2. CORE DATA
+// 5. API MODULE: CORE DATA
 // ==========================================
 createCrud('department', 'departments');
 createCrud('salaryFormula', 'formulas');
@@ -157,8 +159,9 @@ createCrud('bonusType', 'bonus-types');
 createCrud('annualBonusPolicy', 'bonus-policies');
 
 // ==========================================
-// 3. COMPLEX MODULES
+// 6. API MODULE: COMPLEX LOGIC
 // ==========================================
+
 // --- System Config ---
 app.get('/api/config/system', async (req, res) => {
     const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
@@ -198,7 +201,7 @@ app.post('/api/ranks', async (req, res) => {
     res.json(rank);
 });
 
-// --- Attendance ---
+// --- Attendance (Chấm công) ---
 app.get('/api/attendance', async (req, res) => {
     const { month } = req.query; 
     const records = await prisma.attendanceRecord.findMany({
@@ -223,7 +226,7 @@ app.post('/api/attendance', async (req, res) => {
     } catch(e) { res.status(500).json({ error: "Lỗi lưu chấm công" }); }
 });
 
-// --- Salary Records ---
+// --- Salary Records (Bảng lương) ---
 app.get('/api/salary-records', async (req, res) => {
     const { month } = req.query;
     const records = await prisma.salaryRecord.findMany({
@@ -243,7 +246,7 @@ app.post('/api/salary-records', async (req, res) => {
     } catch(e) { res.status(500).json({ error: "Lỗi lưu bảng lương" }); }
 });
 
-// --- Evaluations ---
+// --- Evaluations (Đánh giá) ---
 app.get('/api/evaluations', async (req, res) => {
     const items = await prisma.evaluationRequest.findMany({ orderBy: { createdAt: 'desc' } });
     res.json(items);
@@ -254,25 +257,32 @@ app.post('/api/evaluations', async (req, res) => {
 });
 
 // ==========================================
-// 4. STATIC & STARTUP
+// 7. PHỤC VỤ FILE TĨNH (FRONTEND)
 // ==========================================
 app.get('/api/ping', (req, res) => {
     res.json({ status: "OK", mode: "FINAL_VERSION" });
 });
 
+// Trỏ đúng vào thư mục 'dist' do Vite build ra
 const distPath = path.join(process.cwd(), 'dist');
+
 if (fs.existsSync(distPath)) {
+    console.log(`[STATIC] Đang phục vụ giao diện từ: ${distPath}`);
     app.use(express.static(distPath));
+} else {
+    console.error(`[STATIC] CẢNH BÁO: Không tìm thấy thư mục 'dist'. Vui lòng kiểm tra log Build.`);
 }
+
+// Fallback: Mọi đường dẫn không phải API đều trả về index.html (để React Router xử lý)
 app.get('*', (req, res) => {
     if (fs.existsSync(path.join(distPath, 'index.html'))) {
         res.sendFile(path.join(distPath, 'index.html'));
     } else {
-        res.send("Server đang chạy. Vui lòng build frontend!");
+        res.send("<h1>Server Backend đang chạy.</h1><p>Đang chờ Frontend build xong (thư mục dist).</p>");
     }
 });
 
-// Chuyển sang lắng nghe '0.0.0.0' rõ ràng để Cloud Run nhận diện
+// Lắng nghe cổng 0.0.0.0 để Cloud Run nhận diện
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ Backend HRM (All Tables) đã chạy tại cổng ${PORT}`);
+    console.log(`✅ Backend HRM đã chạy thành công tại cổng ${PORT}`);
 });
