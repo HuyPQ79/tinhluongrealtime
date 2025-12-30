@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig(({ mode }) => {
+<<<<<<< Updated upstream
   // Load biến môi trường
   const env = loadEnv(mode, process.cwd(), '');
 
@@ -42,6 +43,29 @@ export default defineConfig(({ mode }) => {
     // 4. Expose biến môi trường cho code React dùng (nếu cần)
     define: {
       'process.env': env
+=======
+  const env = loadEnv(mode, '.', '');
+  return {
+    // --- PHẦN SERVER DEV (Không ảnh hưởng Cloud Run) ---
+    server: {
+      port: 3000,
+      host: '0.0.0.0',
+    },
+    plugins: [react()],
+    define: {
+      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+    },
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      }
+    },
+    // --- BỔ SUNG QUAN TRỌNG: Cấu hình Build ---
+    build: {
+      outDir: 'dist', // Bắt buộc xuất ra thư mục dist
+      emptyOutDir: true,
+>>>>>>> Stashed changes
     }
   };
 });
