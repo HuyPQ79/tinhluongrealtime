@@ -380,6 +380,11 @@ app.post('/api/users', async (req, res) => {
         bankName: raw.bankName || null,
         taxCode: raw.taxCode || null,
         socialInsuranceNo: raw.socialInsuranceNo || null,
+        // JSON fields
+        assignedDeptIds: raw.assignedDeptIds ? (Array.isArray(raw.assignedDeptIds) ? raw.assignedDeptIds : JSON.parse(raw.assignedDeptIds || '[]')) : null,
+        activeAssignments: raw.activeAssignments ? (Array.isArray(raw.activeAssignments) ? raw.activeAssignments : JSON.parse(raw.activeAssignments || '[]')) : null,
+        salaryHistory: raw.salaryHistory ? (Array.isArray(raw.salaryHistory) ? raw.salaryHistory : JSON.parse(raw.salaryHistory || '[]')) : null,
+        sideDeptId: raw.sideDeptId || null,
     };
 
     // 2. FIX LỖI DATE (THỦ PHẠM CHÍNH)

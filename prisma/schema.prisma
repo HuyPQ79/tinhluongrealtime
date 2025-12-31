@@ -93,6 +93,7 @@ model User {
   department           Department?  @relation(fields: [currentDeptId], references: [id])
   assignedDeptIds      Json?        // [FIX] Mảng ID các phòng ban kiêm nhiệm
   activeAssignments    Json?        // [FIX] Chi tiết kiêm nhiệm
+  sideDeptId           String?      // [FIX] Phòng ban kiêm nhiệm chính (để query được)
   
   currentRankId        String?
   currentGradeId       String?
