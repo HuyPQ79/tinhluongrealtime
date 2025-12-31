@@ -158,9 +158,23 @@ export const seedDatabase = async () => {
     // 1. Variables & Formulas
     try {
         console.log("   - Configs...");
-        for (const v of INITIAL_SALARY_VARIABLES) await prisma.salaryVariable.upsert({ where: { code: v.code }, update: { ...v }, create: { ...v } });
-        for (const f of INITIAL_FORMULAS) await prisma.salaryFormula.upsert({ where: { code: f.code }, update: { ...f }, create: { ...f } });
-    } catch(e) { console.error("   x Lỗi Configs:", e); }
+        for (const v of INITIAL_SALARY_VARIABLES) {
+            await prisma.salaryVariable.upsert({
+                where: { code: v.code },
+                update: { ...v },
+                create: { ...v }
+            });
+        }
+        for (const f of INITIAL_FORMULAS) {
+            await prisma.salaryFormula.upsert({
+                where: { code: f.code },
+                update: { ...f },
+                create: { ...f }
+            });
+        }
+    } catch(e) {
+        console.error("   x Lỗi Configs:", e);
+    }
 
     // 2. Ranks & Grades
     try {

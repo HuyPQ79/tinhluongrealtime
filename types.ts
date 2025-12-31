@@ -91,7 +91,7 @@ export interface SeniorityRule {
 export interface SalaryAdjustment {
   id: string;
   name: string;
-  type: 'BONUS' | 'ALLOWANCE' | 'DEDUCTION' | 'OTHER_SALARY';
+  type: 'BONUS' | 'ALLOWANCE' | 'OTHER_DEDUCTION' | 'OTHER_SALARY';
   amount: number;
   note: string;
 }

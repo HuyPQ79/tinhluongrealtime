@@ -772,6 +772,273 @@ app.post('/api/salary-records', async (req, res) => {
 });
 
 // ==========================================
+// SALARY CALCULATION - HÀM TÍNH LƯƠNG TỰ ĐỘNG
+// ==========================================
+
+// Helper: Tính công tiêu chuẩn (Ctc) = Tổng ngày trong tháng - Chủ nhật
+function calculateCtc(year: number, month: number): number {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let sundays = 0;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month - 1, day);
+    if (date.getDay() === 0) sundays++;
+  }
+  return daysInMonth - sundays;
+}
+
+// Endpoint tính lương tự động
+app.post('/api/salary-records/calculate', async (req, res) => {
+  try {
+    const { month } = req.query; // YYYY-MM
+    if (!month || typeof month !== 'string') {
+      return res.status(400).json({ message: 'Thiếu tham số month (YYYY-MM)' });
+    }
+    
+    const [year, monthNum] = month.split('-').map(Number);
+    if (!year || !monthNum) {
+      return res.status(400).json({ message: 'Định dạng month không đúng (YYYY-MM)' });
+    }
+    
+    // Lấy dữ liệu cần thiết
+    const users = await prisma.user.findMany({ where: { status: 'ACTIVE' } });
+    const attendanceRecords = await prisma.attendanceRecord.findMany({
+      where: { date: { startsWith: month }, status: 'APPROVED' }
+    });
+    const evaluations = await prisma.evaluationRequest.findMany({
+      where: { createdAt: { gte: new Date(`${month}-01`) } }
+    });
+    const pieceworkConfigs = await prisma.pieceworkConfig.findMany({
+      where: { month }
+    });
+    const dailyWorkItems = await prisma.dailyWorkItem.findMany();
+    const salaryGrades = await prisma.salaryGrade.findMany();
+    const criteriaList = await prisma.criterion.findMany();
+    const criteriaGroups = await prisma.criterionGroup.findMany();
+    const systemConfig = await prisma.systemConfig.findUnique({ where: { id: 'default_config' } });
+    
+    const configExtra = (systemConfig?.insuranceRules as any) || {};
+    const insuranceRate = configExtra.insuranceRate ?? 10.5;
+    const unionFeeRate = configExtra.unionFeeRate ?? 1;
+    const personalRelief = configExtra.personalRelief ?? 11000000;
+    const dependentRelief = configExtra.dependentRelief ?? 4400000;
+    const pitSteps = (systemConfig?.pitSteps as any) || configExtra.pitSteps || [];
+    
+    const Ctc = calculateCtc(year, monthNum);
+    const results = [];
+    
+    for (const user of users) {
+      // Tính các chỉ số công từ attendance
+      const userAttendance = attendanceRecords.filter((a) => a.userId === user.id);
+      
+      let Ctt = 0;
+      let Cn = 0;
+      let NCD = 0;
+      let NL = 0;
+      let NCL = 0;
+      let NKL = 0;
+      let NCV = 0;
+      let SL_tt = 0;
+      
+      for (const att of userAttendance) {
+        if (att.type === 'TIME' || att.type === 'PIECEWORK' || att.type === 'DAILY') {
+          Ctt += 1;
+        }
+        if (att.type === 'DAILY') {
+          Cn += 1;
+        }
+        if (att.type === 'MODE') NCD += 1;
+        if (att.type === 'HOLIDAY') NL += 1;
+        if (att.type === 'PAID_LEAVE') NCL += 1;
+        if (att.type === 'UNPAID') NKL += 1;
+        if (att.type === 'WAITING') NCV += 1;
+        if (att.output) SL_tt += att.output;
+      }
+      
+      // Lấy thông tin lương từ SalaryGrade
+      const grade = salaryGrades.find((g) => g.id === user.currentGradeId);
+      const LCB_dm = Number(grade?.baseSalary || 0);
+      const LHQ_dm = user.paymentType === 'PIECEWORK' ? 0 : Number(user.efficiencySalary || 0);
+      
+      // Tính LSL_dm (cho nhân viên khoán)
+      const pieceworkConfig = pieceworkConfigs.find((p) => p.userId === user.id);
+      const SL_khoan = pieceworkConfig?.targetOutput || 0;
+      const DG_khoan = Number(pieceworkConfig?.unitPrice || user.pieceworkUnitPrice || 0);
+      const LSL_dm = user.paymentType === 'PIECEWORK' ? SL_khoan * DG_khoan : 0;
+      
+      // Tính LCB_tt
+      const actualBaseSalary = (LCB_dm / Ctc) * Ctt;
+      
+      // Tính LHQ_tt hoặc LSL_tt
+      let actualEfficiencySalary = 0;
+      let actualPieceworkSalary = 0;
+      
+      if (user.paymentType === 'PIECEWORK') {
+        actualPieceworkSalary = (LSL_dm / Ctc) * Ctt;
+      } else {
+        actualEfficiencySalary = (LHQ_dm / Ctc) * Ctt;
+      }
+      
+      // Tính Lương Khác (Lcn + Ltc + Lncl)
+      let Lcn = 0;
+      let Ltc = 0;
+      
+      for (const att of userAttendance) {
+        // Lương công nhật
+        if (att.type === 'DAILY' && att.dailyWorkItemId) {
+          const workItem = dailyWorkItems.find((d) => d.id === att.dailyWorkItemId);
+          if (workItem) {
+            Lcn += Number(workItem.unitPrice || 0);
+          }
+        }
+        
+        // Lương tăng ca
+        if (att.overtimeHours > 0) {
+          Ltc += att.overtimeHours * (LCB_dm / Ctc / 8) * (att.otRate || 1.5);
+        }
+      }
+      
+      const Lncl = (NCD + NL + NCL) * (LCB_dm / Ctc) + (NCV * LCB_dm / Ctc * 0.7);
+      const Lk = Lcn + Ltc + Lncl;
+      
+      // Tính Phụ cấp
+      const PC_cd = Number(grade?.fixedAllowance || 0);
+      const totalAllowance = PC_cd;
+      
+      // Tính Thưởng
+      const fixedBonuses = (grade?.fixedBonuses as any) || [];
+      const monthBonus = fixedBonuses.find((b: any) => b.month === monthNum);
+      const TH_cd = monthBonus ? Number(monthBonus.amount || 0) : 0;
+      const totalBonus = TH_cd;
+      
+      // Tính otherSalary
+      const otherSalary = Lk;
+      
+      // Tính Gross
+      const calculatedSalary = actualBaseSalary + actualEfficiencySalary + actualPieceworkSalary + otherSalary + totalAllowance + totalBonus;
+      
+      // Tính Khấu trừ BHXH
+      const insuranceBase = Math.min(calculatedSalary, Number(systemConfig?.maxInsuranceBase || 36000000));
+      const insuranceDeduction = insuranceBase * (insuranceRate / 100);
+      
+      // Tính Phí Công đoàn
+      const unionFee = insuranceBase * (unionFeeRate / 100);
+      
+      // Tính Thuế TNCN
+      const TN_ct = calculatedSalary - insuranceDeduction - unionFee - personalRelief - (dependentRelief * (user.numberOfDependents || 0));
+      let pitDeduction = 0;
+      if (TN_ct > 0) {
+        const sortedSteps = [...pitSteps].sort((a: any, b: any) => a.threshold - b.threshold);
+        for (const step of sortedSteps) {
+          if (TN_ct <= step.threshold) {
+            pitDeduction = (TN_ct * step.rate / 100) - (step.subtraction || 0);
+            break;
+          }
+        }
+        if (pitDeduction < 0) pitDeduction = 0;
+      }
+      
+      // Tính Net Salary
+      const advancePayment = 0;
+      const otherDeductions = 0;
+      const netSalary = (calculatedSalary - insuranceDeduction - unionFee - pitDeduction - advancePayment - otherDeductions) * ((user.probationRate || 100) / 100);
+      
+      // Tính HS_tn
+      const HS_tn = 1.0;
+      
+      // Lưu calculationLog
+      const calculationLog = {
+        Lcn,
+        Ltc,
+        Lncl,
+        Lk,
+      };
+      
+      // Lưu vào database
+      const salaryRecord = await prisma.salaryRecord.upsert({
+        where: { userId_date: { userId: user.id, date: month } },
+        update: {
+          Ctc,
+          Ctt,
+          Cn,
+          NCD,
+          NL,
+          NCL,
+          NKL,
+          NCV,
+          LCB_dm,
+          LHQ_dm,
+          LSL_dm,
+          SL_khoan,
+          SL_tt,
+          DG_khoan,
+          HS_tn,
+          probationRate: user.probationRate || 100,
+          actualBaseSalary,
+          actualEfficiencySalary,
+          actualPieceworkSalary,
+          otherSalary,
+          totalAllowance,
+          totalBonus,
+          overtimeSalary: Ltc,
+          insuranceDeduction,
+          pitDeduction,
+          unionFee,
+          advancePayment,
+          otherDeductions,
+          calculatedSalary,
+          netSalary,
+          calculationLog: calculationLog as any,
+        },
+        create: {
+          id: `sal_${user.id}_${month}`,
+          userId: user.id,
+          date: month,
+          status: 'DRAFT',
+          Ctc,
+          Ctt,
+          Cn,
+          NCD,
+          NL,
+          NCL,
+          NKL,
+          NCV,
+          LCB_dm,
+          LHQ_dm,
+          LSL_dm,
+          SL_khoan,
+          SL_tt,
+          DG_khoan,
+          HS_tn,
+          probationRate: user.probationRate || 100,
+          actualBaseSalary,
+          actualEfficiencySalary,
+          actualPieceworkSalary,
+          otherSalary,
+          totalAllowance,
+          totalBonus,
+          overtimeSalary: Ltc,
+          insuranceDeduction,
+          pitDeduction,
+          unionFee,
+          advancePayment,
+          otherDeductions,
+          calculatedSalary,
+          netSalary,
+          calculationLog: calculationLog as any,
+        },
+      });
+      
+      results.push(salaryRecord);
+    }
+    
+    res.json({ success: true, count: results.length, records: results });
+  } catch (e: any) {
+    console.error("Error calculating salary:", e);
+    res.status(500).json({ message: e.message || 'Lỗi tính lương' });
+  }
+});
+
+// ==========================================
 // SALARY ADJUSTMENTS & ADVANCE PAYMENT
 // ==========================================
 

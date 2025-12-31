@@ -174,5 +174,35 @@ export const api = {
     async getEvaluations() { return await request('/evaluations'); },
     async saveEvaluation(data: EvaluationRequest) { 
         return await request('/evaluations', { method: 'POST', body: JSON.stringify(data) }); 
+    },
+
+    // ==================================================
+    // 6. SALARY CALCULATION & ADJUSTMENTS
+    // ==================================================
+    async calculateMonthlySalary(month: string) {
+        return await request(`/salary-records/calculate?month=${month}`, { method: 'POST' });
+    },
+    async updateSalaryStatus(id: string, status: RecordStatus, rejectionReason?: string) {
+        return await request(`/salary-records/${id}/status`, { 
+            method: 'PUT', 
+            body: JSON.stringify({ status, rejectionReason }) 
+        });
+    },
+    async addSalaryAdjustment(recordId: string, adjustment: any) {
+        return await request(`/salary-records/${recordId}/adjustments`, { 
+            method: 'POST', 
+            body: JSON.stringify(adjustment) 
+        });
+    },
+    async deleteSalaryAdjustment(recordId: string, adjId: string) {
+        return await request(`/salary-records/${recordId}/adjustments/${adjId}`, { 
+            method: 'DELETE' 
+        });
+    },
+    async updateAdvancePayment(recordId: string, amount: number) {
+        return await request(`/salary-records/${recordId}/advance-payment`, { 
+            method: 'PUT', 
+            body: JSON.stringify({ amount }) 
+        });
     }
 };
