@@ -15,14 +15,23 @@ const INITIAL_RANKS = [
 ];
 
 const INITIAL_GRADES = INITIAL_RANKS.flatMap(rank => 
-  [1, 2, 3, 4, 5].map(level => ({
-    id: `G_${rank.id}_${level}`,
-    rankId: rank.id,
-    name: `Bậc ${level}`, // Thêm name để khớp schema
-    level: level,
-    multiplier: 1.0, // Mặc định
-    amount: (6 - rank.order) * 4500000 + (level * 1000000), // Logic tính lương theo bậc
-  }))
+  [1, 2, 3, 4, 5].map(level => {
+    const baseAmount = (6 - rank.order) * 4500000 + (level * 1000000);
+    return {
+      id: `G_${rank.id}_${level}`,
+      rankId: rank.id,
+      name: `Bậc ${level}`,
+      level: level,
+      multiplier: 1.0,
+      amount: baseAmount,
+      baseSalary: baseAmount * 0.6, // 60% lương cơ bản
+      efficiencySalary: baseAmount * 0.3, // 30% lương hiệu quả
+      fixedAllowance: baseAmount * 0.05, // 5% phụ cấp cố định
+      flexibleAllowance: 0,
+      otherSalary: 0,
+      fixedBonuses: [] // Có thể thêm thưởng theo tháng sau
+    };
+  })
 );
 
 const INITIAL_CRITERIA_GROUPS = [
@@ -32,11 +41,11 @@ const INITIAL_CRITERIA_GROUPS = [
 ];
 
 const INITIAL_CRITERIA = [
-  { id: 'C1', groupId: 'CG1', name: 'Đi muộn/Về sớm', type: 'PENALTY', target: 'MONTHLY', points: 1, description: 'Vi phạm quy định giờ giấc (Bắt đầu trừ từ lần thứ 3)' },
-  { id: 'C2', groupId: 'CG1', name: 'Nghỉ không phép', type: 'PENALTY', target: 'MONTHLY', points: 5, description: 'Tự ý bỏ việc không thông báo (Trừ ngay lần đầu)' },
-  { id: 'C3', groupId: 'CG2', name: 'Vượt tiến độ dự án', type: 'BONUS', target: 'PROJECT', points: 5, description: 'Hoàn thành trước thời hạn cam kết (Thưởng ngay)' },
-  { id: 'C4', groupId: 'CG3', name: 'Sáng kiến quy trình', type: 'BONUS', target: 'MONTHLY', points: 10, description: 'Cải tiến rút ngắn thời gian làm việc (Thưởng ngay)' },
-  { id: 'C5', groupId: 'CG2', name: 'Sai lỗi kỹ thuật nghiêm trọng', type: 'PENALTY', target: 'MONTHLY', points: 10, description: 'Gây thiệt hại lớn cho hệ thống (Trừ ngay lần đầu)' },
+  { id: 'C1', groupId: 'CG1', name: 'Đi muộn/Về sớm', type: 'PENALTY', target: 'MONTHLY', points: 1, unit: 'PERCENT', value: 0.5, threshold: 2, description: 'Vi phạm quy định giờ giấc (Bắt đầu trừ từ lần thứ 3)' },
+  { id: 'C2', groupId: 'CG1', name: 'Nghỉ không phép', type: 'PENALTY', target: 'MONTHLY', points: 5, unit: 'PERCENT', value: 2.0, threshold: 0, description: 'Tự ý bỏ việc không thông báo (Trừ ngay lần đầu)' },
+  { id: 'C3', groupId: 'CG2', name: 'Vượt tiến độ dự án', type: 'BONUS', target: 'PROJECT', points: 5, unit: 'PERCENT', value: 3.0, threshold: 0, description: 'Hoàn thành trước thời hạn cam kết (Thưởng ngay)' },
+  { id: 'C4', groupId: 'CG3', name: 'Sáng kiến quy trình', type: 'BONUS', target: 'MONTHLY', points: 10, unit: 'PERCENT', value: 5.0, threshold: 0, description: 'Cải tiến rút ngắn thời gian làm việc (Thưởng ngay)' },
+  { id: 'C5', groupId: 'CG2', name: 'Sai lỗi kỹ thuật nghiêm trọng', type: 'PENALTY', target: 'MONTHLY', points: 10, unit: 'PERCENT', value: 5.0, threshold: 0, description: 'Gây thiệt hại lớn cho hệ thống (Trừ ngay lần đầu)' },
 ];
 
 const INITIAL_DAILY_WORK = [
@@ -213,6 +222,47 @@ export const seedDatabase = async () => {
             });
         }
     } catch(e) { console.error("   x Lỗi Evaluations:", e); }
+
+    // 8. SystemConfig - Đảm bảo có cấu hình mặc định đầy đủ
+    try {
+        console.log("   - SystemConfig...");
+        const existingConfig = await prisma.systemConfig.findUnique({ where: { id: 'default_config' } });
+        if (!existingConfig) {
+            await prisma.systemConfig.create({
+                data: {
+                    id: 'default_config',
+                    baseSalary: 1800000,
+                    standardWorkDays: 26,
+                    insuranceBaseSalary: 1800000,
+                    maxInsuranceBase: 36000000,
+                    pitSteps: [
+                        { threshold: 5000000, rate: 5, subtraction: 0 },
+                        { threshold: 10000000, rate: 10, subtraction: 250000 },
+                        { threshold: 18000000, rate: 15, subtraction: 750000 },
+                        { threshold: 32000000, rate: 20, subtraction: 1650000 }
+                    ],
+                    seniorityRules: [
+                        { minMonths: 0, maxMonths: 12, coefficient: 1.0 },
+                        { minMonths: 12, maxMonths: 24, coefficient: 1.05 },
+                        { minMonths: 24, maxMonths: 36, coefficient: 1.1 },
+                        { minMonths: 36, maxMonths: 48, coefficient: 1.15 },
+                        { minMonths: 48, maxMonths: 999, coefficient: 1.2 }
+                    ],
+                    insuranceRules: {
+                        isPeriodLocked: false,
+                        autoApproveDays: 3,
+                        hrAutoApproveHours: 24,
+                        approvalMode: 'POST_AUDIT',
+                        personalRelief: 11000000,
+                        dependentRelief: 4400000,
+                        insuranceRate: 10.5,
+                        unionFeeRate: 1,
+                        approvalWorkflow: []
+                    }
+                }
+            });
+        }
+    } catch(e) { console.error("   x Lỗi SystemConfig:", e); }
 
     console.log("--> [SEEDER] Hoàn tất 100%! Dữ liệu đã đồng bộ.");
     return { success: true };
