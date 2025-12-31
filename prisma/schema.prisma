@@ -367,17 +367,23 @@ model AuditLog {
 }
 
 model BonusType {
-  id        String   @id @default(cuid())
-  name      String
-  code      String   @unique
-  isTaxable Boolean  @default(true)
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  month       Int?     // Tháng áp dụng (1-12)
+  description String?  @db.Text
+  isTaxable   Boolean  @default(true)
   @@map("bonus_types")
 }
 
 model AnnualBonusPolicy {
   id          String   @id @default(cuid())
-  name        String
-  formulaCode String
-  condition   String?
+  bonusTypeId String?  // ID loại thưởng
+  rankId      String?  // ID cấp bậc
+  gradeId     String?  // ID bậc lương
+  amount      Decimal  @default(0) @db.Decimal(18, 2) // Số tiền thưởng
+  name        String?  // Tên chính sách (optional, có thể tính từ bonusType + rank)
+  formulaCode String?  // Mã công thức (optional, giữ lại để tương thích)
+  condition   String?  // Điều kiện (optional)
   @@map("annual_bonus_policies")
 }

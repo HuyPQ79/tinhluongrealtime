@@ -146,7 +146,23 @@ const createCrud = (
 // ==========================================
 // API CONFIG (MỞ RỘNG ROUTE ĐỂ FRONTEND KHÔNG BỊ 404)
 // ==========================================
-createCrud('salaryFormula', ['formulas', 'salary-formulas']); 
+createCrud('salaryFormula', ['formulas', 'salary-formulas'], {
+  mapOut: (row: any) => ({
+    ...row,
+    targetField: row.targetField || row.code || '', // Map code -> targetField nếu cần
+    formulaExpression: row.expression || row.formulaExpression || '',
+    isActive: row.status === 'ACTIVE' || row.isActive !== false,
+    order: row.order || 0,
+  }),
+  mapIn: (body: any) => {
+    const { targetField, formulaExpression, isActive, ...rest } = body || {};
+    return {
+      ...rest,
+      expression: formulaExpression || rest.expression || '',
+      status: isActive !== false ? 'ACTIVE' : 'INACTIVE',
+    };
+  },
+}); 
 createCrud('salaryVariable', ['variables', 'salary-variables']);
 createCrud('criterionGroup', ['criteria/groups', 'criterion-groups']);
 createCrud('criterion', ['criteria/items', 'criteria', 'criterions']); 
@@ -191,8 +207,22 @@ createCrud('pieceworkConfig', ['piecework-configs'], {
   }),
 });
 createCrud('holiday', ['holidays']);
-createCrud('bonusType', ['bonus-types']);
-createCrud('annualBonusPolicy', ['bonus-policies']);
+createCrud('bonusType', ['bonus-types'], {
+  mapOut: (row: any) => ({
+    ...row,
+    month: row.month || null,
+    description: row.description || '',
+  }),
+});
+createCrud('annualBonusPolicy', ['bonus-policies'], {
+  mapOut: (row: any) => ({
+    ...row,
+    bonusTypeId: row.bonusTypeId || null,
+    rankId: row.rankId || null,
+    gradeId: row.gradeId || null,
+    amount: Number(row.amount || 0),
+  }),
+});
 createCrud('auditLog', ['audit', 'audit-logs']);
 createCrud('evaluationRequest', ['evaluations'], {
   findManyArgs: { include: { user: true } },
@@ -203,6 +233,8 @@ createCrud('evaluationRequest', ['evaluations'], {
       userName: user.name || '',
       createdAt: row.createdAt ? row.createdAt.toISOString() : new Date().toISOString(),
       scope: row.scope || undefined,
+      // Đảm bảo có đầy đủ các trường từ types.ts
+      proofFileName: row.proofFileName || '',
     };
   },
 });
