@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// --- 1. DỮ LIỆU MẪU (CHUẨN HÓA) ---
+// --- DỮ LIỆU MẪU ---
 const INITIAL_DEPARTMENTS = [
   { id: 'DEP01', name: 'Ban Lãnh Đạo & Điều Hành', budgetNorm: 5000000000 },
   { id: 'DEP02', name: 'Khối Kinh Doanh', budgetNorm: 2000000000 },
@@ -27,18 +27,6 @@ const INITIAL_GRADES = [
     { id: 'G_R4_2', rankId: 'R4', name: 'Bậc 2', multiplier: 1.5, amount: 10000000 },
     { id: 'G_R4_4', rankId: 'R4', name: 'Bậc 4', multiplier: 2.0, amount: 14000000 },
     { id: 'G_R5_1', rankId: 'R5', name: 'Bậc 1', multiplier: 1.0, amount: 6000000 },
-];
-
-const INITIAL_USERS = [
-  // User Admin mặc định đã được tạo ở server.ts nên không để ở đây để tránh trùng
-  { id: 'USR_BLD', username: 'bld', password: '123', name: 'Lê Ban Lãnh Đạo', roles: ['BAN_LANH_DAO'], status: 'ACTIVE', currentDeptId: 'DEP01', paymentType: 'TIME', efficiencySalary: 25000000, reservedBonusAmount: 100000000 },
-  { id: 'USR_GDK', username: 'gdk', password: '123', name: 'Trần Giám Đốc Khối', roles: ['GIAM_DOC_KHOI'], status: 'ACTIVE', currentDeptId: 'DEP02', paymentType: 'TIME', efficiencySalary: 18000000, reservedBonusAmount: 70000000 },
-  { id: 'USR_TP_TIME', username: 'tpkd', password: '123', name: 'Nguyễn Văn TP Kinh Doanh', roles: ['QUAN_LY'], status: 'ACTIVE', currentDeptId: 'DEP02', paymentType: 'TIME', efficiencySalary: 12000000, reservedBonusAmount: 50000000 },
-  { id: 'USR_TP_PIECE', username: 'tpsx', password: '123', name: 'Phạm Văn TP Sản Xuất', roles: ['QUAN_LY'], status: 'ACTIVE', currentDeptId: 'DEP03', paymentType: 'PIECEWORK', pieceworkUnitPrice: 150000, efficiencySalary: 0, reservedBonusAmount: 30000000 },
-  { id: 'USR_KTL', username: 'ktl', password: '123', name: 'Hoàng Kế Toán Lương', roles: ['KE_TOAN_LUONG'], status: 'ACTIVE', currentDeptId: 'DEP04', paymentType: 'TIME', efficiencySalary: 10000000, reservedBonusAmount: 20000000 },
-  { id: 'USR_NS', username: 'ns', password: '123', name: 'Vũ Nhân Sự', roles: ['NHAN_SU'], status: 'ACTIVE', currentDeptId: 'DEP05', paymentType: 'TIME', efficiencySalary: 10000000, reservedBonusAmount: 20000000 },
-  { id: 'USR_NV_TIME', username: 'nv.sale', password: '123', name: 'Đặng Nhân Viên Sale', roles: ['NHAN_VIEN'], status: 'ACTIVE', currentDeptId: 'DEP02', paymentType: 'TIME', efficiencySalary: 6000000, reservedBonusAmount: 10000000 },
-  { id: 'USR_NV_PIECE', username: 'nv.cn', password: '123', name: 'Bùi Công Nhân', roles: ['NHAN_VIEN'], status: 'ACTIVE', currentDeptId: 'DEP03', paymentType: 'PIECEWORK', pieceworkUnitPrice: 35000, efficiencySalary: 0, reservedBonusAmount: 10000000 }
 ];
 
 const INITIAL_VARIABLES = [
@@ -78,58 +66,45 @@ const INITIAL_DAILY_WORK = [
   { id: 'DW2', name: 'Kiểm kê kho bãi', unitPrice: 200000, type: 'SERVICE' },
 ];
 
-// --- 2. HÀM SEED BẤT TỬ (UPSERT ALL) ---
+// --- HÀM SEED CHÍNH ---
 export const seedDatabase = async () => {
     console.log("--> [SEEDER] Bắt đầu nạp dữ liệu...");
 
     // 1. Departments
     try {
-        console.log("   - Nạp Departments...");
         for (const d of INITIAL_DEPARTMENTS) {
             await prisma.department.upsert({ where: { id: d.id }, update: d, create: d });
         }
-    } catch(e) { console.error("   x Lỗi Departments:", e); }
+        console.log("   - Departments: OK");
+    } catch(e) { console.error("   x Departments Error:", e); }
 
     // 2. Ranks & Grades
     try {
-        console.log("   - Nạp Ranks & Grades...");
         for (const r of INITIAL_RANKS) await prisma.salaryRank.upsert({ where: { id: r.id }, update: r, create: r });
         for (const g of INITIAL_GRADES) await prisma.salaryGrade.upsert({ where: { id: g.id }, update: g, create: g });
-    } catch(e) { console.error("   x Lỗi Ranks:", e); }
+        console.log("   - Ranks/Grades: OK");
+    } catch(e) { console.error("   x Ranks Error:", e); }
 
-    // 3. Users (Bỏ qua nếu trùng username)
+    // 3. Configs (Variables, Formulas)
     try {
-        console.log("   - Nạp Users...");
-        for (const u of INITIAL_USERS) {
-            // Kiểm tra username trước
-            const exists = await prisma.user.findUnique({ where: { username: u.username } });
-            if (!exists) {
-                await prisma.user.create({
-                    data: { ...u, joinDate: new Date().toISOString() }
-                });
-            }
-        }
-    } catch(e) { console.error("   x Lỗi Users:", e); }
-
-    // 4. Configs (Variables, Formulas) - QUAN TRỌNG NHẤT
-    try {
-        console.log("   - Nạp Configs...");
         for (const v of INITIAL_VARIABLES) await prisma.salaryVariable.upsert({ where: { code: v.code }, update: v, create: v });
         for (const f of INITIAL_FORMULAS) await prisma.salaryFormula.upsert({ where: { code: f.code }, update: f, create: f });
-    } catch(e) { console.error("   x Lỗi Configs:", e); }
+        console.log("   - Configs: OK");
+    } catch(e) { console.error("   x Configs Error:", e); }
     
-    // 5. Criteria
+    // 4. Criteria
     try {
-        console.log("   - Nạp Criteria...");
         for (const g of INITIAL_GROUPS) await prisma.criterionGroup.upsert({ where: { id: g.id }, update: g, create: g });
         for (const c of INITIAL_CRITERIA) await prisma.criterion.upsert({ where: { id: c.id }, update: c, create: { ...c, proofRequired: false } });
-    } catch(e) { console.error("   x Lỗi Criteria:", e); }
+        console.log("   - Criteria: OK");
+    } catch(e) { console.error("   x Criteria Error:", e); }
 
-    // 6. Daily Work
+    // 5. Daily Work
     try {
         for (const w of INITIAL_DAILY_WORK) await prisma.dailyWorkItem.upsert({ where: { id: w.id }, update: w, create: w });
-    } catch(e) { console.error("   x Lỗi DailyWork:", e); }
+        console.log("   - DailyWork: OK");
+    } catch(e) { console.error("   x DailyWork Error:", e); }
 
-    console.log("--> [SEEDER] Đã hoàn tất! (Các lỗi nhỏ nếu có đã được bỏ qua)");
+    console.log("--> [SEEDER] Hoàn tất!");
     return { success: true };
 };
