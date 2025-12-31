@@ -6,19 +6,59 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-// Import Seeder
+// --- IMPORT SEEDER ---
 import { seedDatabase } from './seeder';
 
 // --- ERROR TRAP ---
 process.on('uncaughtException', (err) => { console.error('🔥 CRITICAL:', err); });
 process.on('unhandledRejection', (reason, promise) => { console.error('🔥 PROMISE:', reason); });
 
-console.log("=== SERVER RESTARTING (FIX DATABASE SYNC) ===");
+console.log("=== SERVER RESTARTING (FIX JOINDATE + ALIAS ROUTES) ===");
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '8080');
 const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 const prisma = new PrismaClient();
+
+// =========================
+// Helpers (chuẩn hoá dữ liệu từ Frontend)
+// =========================
+// Prisma DateTime cần ISO-8601 đầy đủ. Frontend đôi khi gửi "YYYY-MM-DD".
+// Hàm này cố gắng parse nhiều dạng; nếu không parse được thì trả undefined.
+function normalizeDateTime(input: any): Date | undefined {
+    if (input === null || input === undefined) return undefined;
+    if (input instanceof Date && !isNaN(input.getTime())) return input;
+
+    // Timestamp số
+    if (typeof input === 'number') {
+        const d = new Date(input);
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+
+    if (typeof input !== 'string') return undefined;
+    const s = input.trim();
+    if (!s) return undefined;
+
+    // Dạng YYYY-MM-DD (date-only)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const d = new Date(`${s}T00:00:00.000Z`);
+        return isNaN(d.getTime()) ? undefined : d;
+    }
+
+    // Dạng ISO đầy đủ
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? undefined : d;
+}
+
+// Date-only (AttendanceRecord.date là @db.Date) — vẫn dùng Date object.
+function normalizeDateOnly(input: any): Date | undefined {
+    const d = normalizeDateTime(input);
+    if (!d) return undefined;
+    // Cắt thời gian về 00:00 UTC để ổn định
+    const iso = d.toISOString().slice(0, 10);
+    const d0 = new Date(`${iso}T00:00:00.000Z`);
+    return isNaN(d0.getTime()) ? undefined : d0;
+}
 
 // === DB INIT ===
 async function initDatabase() {
@@ -26,14 +66,14 @@ async function initDatabase() {
         await prisma.$queryRaw`SELECT 1`;
         console.log("--> DB Connected.");
         
-        // Tạo Config mặc định
+        // Default Config
         const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
         if (!config) {
             await prisma.systemConfig.create({
                 data: { id: "default_config", baseSalary: 1800000, standardWorkDays: 26, insuranceBaseSalary: 1800000, maxInsuranceBase: 36000000 }
             });
         }
-        // Tạo Admin mặc định
+        // Default Admin
         const userCount = await prisma.user.count();
         if (userCount === 0) {
             const salt = await bcrypt.genSalt(10);
@@ -48,14 +88,21 @@ initDatabase();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Helper CRUD
+// Middleware log request
+app.use((req, res, next) => {
+    console.log(`[REQ] ${req.method} ${req.url}`);
+    next();
+});
+
+// --- HELPER: TẠO API VỚI NHIỀU TÊN GỌI KHÁC NHAU ---
+// Frontend gọi api/formulas hay api/salary-formulas đều được
 const createCrud = (modelName: string, routes: string[]) => {
     // @ts-ignore
     const model = prisma[modelName];
     routes.forEach(route => {
         app.get(`/api/${route}`, async (req, res) => {
             try { const items = await model.findMany(); res.json(items); } 
-            catch(e: any) { res.status(500).json({ error: e.message }); }
+            catch(e: any) { res.status(500).json({ message: e.message }); }
         });
         app.post(`/api/${route}`, async (req, res) => {
             try {
@@ -66,16 +113,18 @@ const createCrud = (modelName: string, routes: string[]) => {
                     create: { ...data, id: data.id || `rec_${Date.now()}` }
                 });
                 res.json(item);
-            } catch(e: any) { res.status(500).json({ error: e.message }); }
+            } catch(e: any) { res.status(500).json({ message: e.message }); }
         });
         app.delete(`/api/${route}/:id`, async (req, res) => {
             try { await model.delete({ where: { id: req.params.id } }); res.json({ success: true }); } 
-            catch(e: any) { res.status(500).json({ error: e.message }); }
+            catch(e: any) { res.status(500).json({ message: e.message }); }
         });
     });
 };
 
-// API Config (Đa dạng hóa route)
+// ==========================================
+// API CONFIG (MỞ RỘNG ROUTE ĐỂ FRONTEND KHÔNG BỊ 404)
+// ==========================================
 createCrud('salaryFormula', ['formulas', 'salary-formulas']); 
 createCrud('salaryVariable', ['variables', 'salary-variables']);
 createCrud('criterionGroup', ['criteria/groups', 'criterion-groups']);
@@ -87,13 +136,15 @@ createCrud('pieceworkConfig', ['piecework-configs']);
 createCrud('holiday', ['holidays']);
 createCrud('auditLog', ['audit', 'audit-logs']);
 
-// === API USER (QUAN TRỌNG: ĐÃ THÊM BỘ LỌC DỮ LIỆU) ===
+// ==========================================
+// API USER (FIX LỖI JOINDATE & 500 ERROR)
+// ==========================================
 app.post('/api/users', async (req, res) => {
   try {
     const raw = req.body;
-    console.log("--> Nhận dữ liệu User:", JSON.stringify(raw));
+    console.log("--> User Data Raw:", JSON.stringify(raw));
 
-    // 1. TẠO ĐỐI TƯỢNG SẠCH (Chỉ lấy trường cần thiết)
+    // 1. CHUẨN HÓA DỮ LIỆU (Tránh lỗi thừa trường)
     const cleanData: any = {
         id: raw.id || "user_" + Date.now(),
         username: raw.username,
@@ -103,44 +154,34 @@ app.post('/api/users', async (req, res) => {
         status: raw.status || "ACTIVE",
         roles: (raw.roles && raw.roles.length > 0) ? raw.roles : ["NHAN_VIEN"],
         paymentType: raw.paymentType || "TIME",
-        // Ép kiểu số để tránh lỗi DB
-        efficiencySalary: Number(raw.efficiencySalary) || 0,
-        pieceworkUnitPrice: Number(raw.pieceworkUnitPrice) || 0,
-        reservedBonusAmount: Number(raw.reservedBonusAmount) || 0,
-        probationRate: Number(raw.probationRate) || 100,
-        numberOfDependents: Number(raw.numberOfDependents) || 0,
-        avatar: raw.avatar || null,
-        // Map departmentId sang currentDeptId
+        efficiencySalary: raw.efficiencySalary || 0,
+        pieceworkUnitPrice: raw.pieceworkUnitPrice || 0,
+        reservedBonusAmount: raw.reservedBonusAmount || 0,
+        probationRate: raw.probationRate || 100,
+        numberOfDependents: raw.numberOfDependents || 0,
+        // Map departmentId -> currentDeptId
         currentDeptId: raw.currentDeptId || raw.departmentId || null
     };
 
-    // Nếu currentDeptId rỗng thì cho về null
-    if (!cleanData.currentDeptId || cleanData.currentDeptId === "") {
-        cleanData.currentDeptId = null;
-    }
+    // 2. FIX LỖI joinDate (Prisma DateTime KHÔNG nhận "YYYY-MM-DD")
+    // - Nếu frontend gửi joinDate hợp lệ: convert -> Date
+    // - Nếu joinDate rỗng/không hợp lệ: KHÔNG set trường này để Prisma dùng @default(now())
+    const jd = normalizeDateTime(raw.joinDate);
+    if (jd) cleanData.joinDate = jd;
 
-    // 2. XỬ LÝ NGÀY THÁNG (Fix lỗi 500 Invalid Date)
-    if (raw.joinDate && raw.joinDate !== "") {
-        try {
-            cleanData.joinDate = new Date(raw.joinDate).toISOString();
-        } catch {
-            cleanData.joinDate = new Date().toISOString();
-        }
-    } else {
-        cleanData.joinDate = new Date().toISOString();
-    }
-
-    // 3. XỬ LÝ MẬT KHẨU
+    // 3. Xử lý Password
     if (raw.password && raw.password.trim() !== "") {
         const salt = await bcrypt.genSalt(10);
         cleanData.password = await bcrypt.hash(raw.password, salt);
     } else if (!raw.id) {
-        // Tạo mới mặc định pass 123
+        // Tạo mới bắt buộc có pass
         const salt = await bcrypt.genSalt(10);
         cleanData.password = await bcrypt.hash("123", salt);
     }
 
-    console.log("--> Dữ liệu sạch sẽ lưu:", JSON.stringify(cleanData));
+    if (cleanData.currentDeptId === "") cleanData.currentDeptId = null;
+
+    console.log("--> User Data Clean:", JSON.stringify(cleanData));
 
     const user = await prisma.user.upsert({
       where: { id: cleanData.id },
@@ -150,9 +191,8 @@ app.post('/api/users', async (req, res) => {
     
     res.json(user);
   } catch (e: any) { 
-      console.error("LỖI LƯU USER:", e);
-      // Trả về lỗi chi tiết cho Frontend xem
-      res.status(500).json({ error: "Lỗi Server: " + e.message }); 
+      console.error("USER ERROR:", e);
+      res.status(500).json({ message: "Lỗi lưu User: " + e.message }); 
   }
 });
 
@@ -181,36 +221,65 @@ app.get('/api/users', async (req, res) => {
 
 app.delete('/api/users/:id', async (req, res) => {
     try { await prisma.user.delete({ where: { id: req.params.id } }); res.json({ success: true }); }
-    catch (e) { res.status(500).json({ error: "Lỗi xóa User" }); }
+    catch (e: any) { res.status(500).json({ message: "Lỗi xóa User" + (e?.message ? (": " + e.message) : "") }); }
 });
 
 app.get('/api/attendance', async (req, res) => {
-    try { const { month } = req.query; const records = await prisma.attendanceRecord.findMany({ where: month ? { date: { startsWith: month as string } } : {} }); res.json(records); } 
-    catch(e: any) { res.status(500).json({ error: e.message }); }
+    try {
+        const { month } = req.query;
+        // Frontend truyền month dạng "YYYY-MM".
+        // AttendanceRecord.date là Date (@db.Date) nên phải lọc theo khoảng thời gian.
+        let where: any = {};
+        if (typeof month === 'string' && /^\d{4}-\d{2}$/.test(month)) {
+            const start = new Date(`${month}-01T00:00:00.000Z`);
+            const [y, m] = month.split('-').map(Number);
+            const next = new Date(Date.UTC(y, m, 1, 0, 0, 0)); // tháng kế tiếp
+            where = { date: { gte: start, lt: next } };
+        }
+        const records = await prisma.attendanceRecord.findMany({ where, orderBy: { date: 'asc' } });
+        res.json(records);
+    } catch(e: any) {
+        res.status(500).json({ message: e.message });
+    }
 });
 app.post('/api/attendance', async (req, res) => {
     try {
-        const data = req.body; const records = Array.isArray(data) ? data : [data]; const results = [];
-        for (const rec of records) results.push(await prisma.attendanceRecord.upsert({ where: { userId_date: { userId: rec.userId, date: rec.date } }, update: rec, create: rec }));
+        const data = req.body;
+        const records = Array.isArray(data) ? data : [data];
+        const results: any[] = [];
+        for (const rec of records) {
+            const date = normalizeDateOnly(rec.date);
+            if (!date) throw new Error(`Invalid date: ${rec.date}`);
+            const payload = { ...rec, date };
+            results.push(
+                await prisma.attendanceRecord.upsert({
+                    where: { userId_date: { userId: rec.userId, date } },
+                    update: payload,
+                    create: payload
+                })
+            );
+        }
         res.json({ success: true, count: results.length });
-    } catch(e: any) { res.status(500).json({ error: e.message }); }
+    } catch(e: any) {
+        res.status(500).json({ message: e.message });
+    }
 });
 
 // API Nạp dữ liệu
 app.get('/api/seed-data-secret', async (req, res) => {
     try {
         await seedDatabase();
-        res.json({ success: true, message: "OK! Dữ liệu đã được nạp." });
-    } catch (error: any) { res.status(500).json({ success: false, error: error.message }); }
+        res.json({ success: true, message: "OK" });
+    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
 });
 
-// Static Files
+// Static
 app.get('/api/ping', (req, res) => { res.json({ status: "OK" }); });
 const distPath = path.join(process.cwd(), 'dist');
 if (fs.existsSync(distPath)) app.use(express.static(distPath));
 app.get('*', (req, res) => { 
     if (fs.existsSync(path.join(distPath, 'index.html'))) res.sendFile(path.join(distPath, 'index.html'));
-    else res.send("Backend OK. Frontend waiting...");
+    else res.send("Backend OK.");
 });
 
 app.listen(PORT, '0.0.0.0', () => { console.log(`Server running on ${PORT}`); });

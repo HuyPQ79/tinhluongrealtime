@@ -66,6 +66,21 @@ const INITIAL_DAILY_WORK = [
   { id: 'DW2', name: 'Kiểm kê kho bãi', unitPrice: 200000, type: 'SERVICE' },
 ];
 
+// Bonus & Holidays (để màn hình cấu hình không bị trống)
+const INITIAL_BONUS_TYPES = [
+  { code: 'BONUS', name: 'Thưởng', isTaxable: true },
+  { code: 'ALLOWANCE', name: 'Phụ cấp', isTaxable: true },
+  { code: 'NON_TAX', name: 'Khoản không tính thuế', isTaxable: false },
+];
+
+const INITIAL_BONUS_POLICIES = [
+  { name: 'Thưởng Tết (mặc định)', formulaCode: 'THUC_LINH', condition: 'DEFAULT' },
+];
+
+const INITIAL_HOLIDAYS = [
+  { date: '2026-01-01', name: 'Tết Dương lịch', rate: 3.0 },
+];
+
 // --- HÀM SEED CHÍNH ---
 export const seedDatabase = async () => {
     console.log("--> [SEEDER] Bắt đầu nạp dữ liệu...");
@@ -104,6 +119,31 @@ export const seedDatabase = async () => {
         for (const w of INITIAL_DAILY_WORK) await prisma.dailyWorkItem.upsert({ where: { id: w.id }, update: w, create: w });
         console.log("   - DailyWork: OK");
     } catch(e) { console.error("   x DailyWork Error:", e); }
+
+    // 6. Bonus types & policies
+    try {
+        for (const b of INITIAL_BONUS_TYPES) {
+            await prisma.bonusType.upsert({ where: { code: b.code }, update: b, create: b });
+        }
+        for (const p of INITIAL_BONUS_POLICIES) {
+            // AnnualBonusPolicy không có unique code; dùng name làm khóa tạm bằng findFirst
+            const existed = await prisma.annualBonusPolicy.findFirst({ where: { name: p.name } });
+            if (existed) {
+                await prisma.annualBonusPolicy.update({ where: { id: existed.id }, data: p });
+            } else {
+                await prisma.annualBonusPolicy.create({ data: p });
+            }
+        }
+        console.log("   - BonusTypes/Policies: OK");
+    } catch(e) { console.error("   x Bonus Error:", e); }
+
+    // 7. Holidays
+    try {
+        for (const h of INITIAL_HOLIDAYS) {
+            await prisma.holiday.upsert({ where: { date: h.date }, update: h, create: h });
+        }
+        console.log("   - Holidays: OK");
+    } catch(e) { console.error("   x Holidays Error:", e); }
 
     console.log("--> [SEEDER] Hoàn tất!");
     return { success: true };
