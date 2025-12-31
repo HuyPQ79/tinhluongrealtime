@@ -606,6 +606,303 @@ app.post('/api/salary-records', async (req, res) => {
   }
 });
 
+// ==========================================
+// SALARY ADJUSTMENTS & ADVANCE PAYMENT
+// ==========================================
+
+// Thêm điều chỉnh vào salary record
+app.post('/api/salary-records/:id/adjustments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adjustment = req.body;
+    
+    const record = await prisma.salaryRecord.findUnique({ where: { id } });
+    if (!record) {
+      return res.status(404).json({ message: 'Không tìm thấy bảng lương' });
+    }
+    
+    const adjustments = (record.adjustments as any) || [];
+    const newAdjustment = {
+      id: `adj_${Date.now()}`,
+      ...adjustment,
+      createdAt: new Date().toISOString(),
+    };
+    adjustments.push(newAdjustment);
+    
+    // Cập nhật lại các thành phần lương dựa trên adjustments
+    let PC_lh = 0;
+    let TH_lh = 0;
+    let otherSalaryAdj = 0;
+    let otherDeductionsAdj = 0;
+    
+    for (const adj of adjustments) {
+      if (adj.type === 'ALLOWANCE') PC_lh += adj.amount;
+      if (adj.type === 'BONUS') TH_lh += adj.amount;
+      if (adj.type === 'OTHER_SALARY') otherSalaryAdj += adj.amount;
+      if (adj.type === 'OTHER_DEDUCTION') otherDeductionsAdj += adj.amount;
+    }
+    
+    const user = await prisma.user.findUnique({ where: { id: record.userId } });
+    const gradeData = user?.currentGradeId ? await prisma.salaryGrade.findUnique({ where: { id: user.currentGradeId } }) : null;
+    const PC_cd = Number(gradeData?.fixedAllowance || 0);
+    
+    // Tính lại totalBonus từ fixed bonuses + adjustments
+    const fixedBonuses = (gradeData?.fixedBonuses as any) || [];
+    const [year, monthNum] = record.date.split('-').map(Number);
+    const monthBonus = fixedBonuses.find((b: any) => b.month === monthNum);
+    const TH_cd = monthBonus ? Number(monthBonus.amount || 0) : 0;
+    const totalBonus = TH_cd + TH_lh;
+    
+    const totalAllowance = PC_cd + PC_lh;
+    
+    // Tính lại otherSalary = Lk (từ calculation) + điều chỉnh tay
+    const log = (record.calculationLog as any) || {};
+    const Lk = log.Lk || 0;
+    const otherSalary = Lk + otherSalaryAdj;
+    
+    const calculatedSalary = Number(record.actualBaseSalary || 0) + Number(record.actualEfficiencySalary || 0) + Number(record.actualPieceworkSalary || 0) + otherSalary + totalAllowance + totalBonus;
+    
+    const systemConfig = await prisma.systemConfig.findUnique({ where: { id: 'default_config' } });
+    const configExtra = (systemConfig?.insuranceRules as any) || {};
+    const insuranceRate = configExtra.insuranceRate ?? 10.5;
+    const unionFeeRate = configExtra.unionFeeRate ?? 1;
+    const personalRelief = configExtra.personalRelief ?? 11000000;
+    const dependentRelief = configExtra.dependentRelief ?? 4400000;
+    const pitSteps = (systemConfig?.pitSteps as any) || configExtra.pitSteps || [];
+    
+    const insuranceBase = Math.min(calculatedSalary, Number(systemConfig?.maxInsuranceBase || 36000000));
+    const insuranceDeduction = insuranceBase * (insuranceRate / 100);
+    const unionFee = insuranceBase * (unionFeeRate / 100);
+    
+    const TN_ct = calculatedSalary - insuranceDeduction - unionFee - personalRelief - (dependentRelief * (user?.numberOfDependents || 0));
+    let pitDeduction = 0;
+    if (TN_ct > 0) {
+      const sortedSteps = [...pitSteps].sort((a: any, b: any) => a.threshold - b.threshold);
+      for (const step of sortedSteps) {
+        if (TN_ct <= step.threshold) {
+          pitDeduction = (TN_ct * step.rate / 100) - (step.subtraction || 0);
+          break;
+        }
+      }
+      if (pitDeduction < 0) pitDeduction = 0;
+    }
+    
+    const advancePayment = Number(record.advancePayment || 0);
+    const netSalary = (calculatedSalary - insuranceDeduction - unionFee - pitDeduction - advancePayment - otherDeductionsAdj) * ((user?.probationRate || 100) / 100);
+    
+    const updated = await prisma.salaryRecord.update({
+      where: { id },
+      data: {
+        adjustments: adjustments as any,
+        totalAllowance,
+        totalBonus,
+        otherSalary,
+        otherDeductions: otherDeductionsAdj,
+        calculatedSalary,
+        insuranceDeduction,
+        pitDeduction,
+        unionFee,
+        netSalary,
+      },
+    });
+    
+    res.json(updated);
+  } catch (e: any) {
+    console.error("Error adding adjustment:", e);
+    res.status(500).json({ message: e.message || 'Lỗi thêm điều chỉnh' });
+  }
+});
+
+// Xóa điều chỉnh - BUG FIX: Tìm deletedAdj TRƯỚC KHI filter
+app.delete('/api/salary-records/:id/adjustments/:adjId', async (req, res) => {
+  try {
+    const { id, adjId } = req.params;
+    
+    const record = await prisma.salaryRecord.findUnique({ where: { id } });
+    if (!record) {
+      return res.status(404).json({ message: 'Không tìm thấy bảng lương' });
+    }
+    
+    const originalAdjustments = (record.adjustments as any) || [];
+    
+    // BUG FIX: Tìm deletedAdj TRƯỚC KHI filter
+    const deletedAdj = originalAdjustments.find((adj: any) => adj.id === adjId);
+    
+    // Sau đó mới filter để loại bỏ adjustment
+    const adjustments = originalAdjustments.filter((adj: any) => adj.id !== adjId);
+    
+    // Tính lại các thành phần
+    let PC_lh = 0;
+    let TH_lh = 0;
+    let otherSalaryAdj = 0;
+    let otherDeductionsAdj = 0;
+    
+    for (const adj of adjustments) {
+      if (adj.type === 'ALLOWANCE') PC_lh += adj.amount;
+      if (adj.type === 'BONUS') TH_lh += adj.amount;
+      if (adj.type === 'OTHER_SALARY') otherSalaryAdj += adj.amount;
+      if (adj.type === 'OTHER_DEDUCTION') otherDeductionsAdj += adj.amount;
+    }
+    
+    const user = await prisma.user.findUnique({ where: { id: record.userId } });
+    const gradeData = user?.currentGradeId ? await prisma.salaryGrade.findUnique({ where: { id: user.currentGradeId } }) : null;
+    const PC_cd = Number(gradeData?.fixedAllowance || 0);
+    
+    // Tính lại totalBonus
+    const fixedBonuses = (gradeData?.fixedBonuses as any) || [];
+    const [year, monthNum] = record.date.split('-').map(Number);
+    const monthBonus = fixedBonuses.find((b: any) => b.month === monthNum);
+    const TH_cd = monthBonus ? Number(monthBonus.amount || 0) : 0;
+    const totalBonus = TH_cd + TH_lh;
+    
+    const totalAllowance = PC_cd + PC_lh;
+    
+    // Tính lại otherSalary = Lk (từ calculation) + điều chỉnh tay còn lại
+    const log = (record.calculationLog as any) || {};
+    const Lk = log.Lk || 0;
+    const otherSalary = Lk + otherSalaryAdj;
+    
+    const calculatedSalary = Number(record.actualBaseSalary || 0) + Number(record.actualEfficiencySalary || 0) + Number(record.actualPieceworkSalary || 0) + otherSalary + totalAllowance + totalBonus;
+    
+    const systemConfig = await prisma.systemConfig.findUnique({ where: { id: 'default_config' } });
+    const configExtra = (systemConfig?.insuranceRules as any) || {};
+    const insuranceRate = configExtra.insuranceRate ?? 10.5;
+    const unionFeeRate = configExtra.unionFeeRate ?? 1;
+    const personalRelief = configExtra.personalRelief ?? 11000000;
+    const dependentRelief = configExtra.dependentRelief ?? 4400000;
+    const pitSteps = (systemConfig?.pitSteps as any) || configExtra.pitSteps || [];
+    
+    const insuranceBase = Math.min(calculatedSalary, Number(systemConfig?.maxInsuranceBase || 36000000));
+    const insuranceDeduction = insuranceBase * (insuranceRate / 100);
+    const unionFee = insuranceBase * (unionFeeRate / 100);
+    
+    const TN_ct = calculatedSalary - insuranceDeduction - unionFee - personalRelief - (dependentRelief * (user?.numberOfDependents || 0));
+    let pitDeduction = 0;
+    if (TN_ct > 0) {
+      const sortedSteps = [...pitSteps].sort((a: any, b: any) => a.threshold - b.threshold);
+      for (const step of sortedSteps) {
+        if (TN_ct <= step.threshold) {
+          pitDeduction = (TN_ct * step.rate / 100) - (step.subtraction || 0);
+          break;
+        }
+      }
+      if (pitDeduction < 0) pitDeduction = 0;
+    }
+    
+    const advancePayment = Number(record.advancePayment || 0);
+    const netSalary = (calculatedSalary - insuranceDeduction - unionFee - pitDeduction - advancePayment - otherDeductionsAdj) * ((user?.probationRate || 100) / 100);
+    
+    const updated = await prisma.salaryRecord.update({
+      where: { id },
+      data: {
+        adjustments: adjustments as any,
+        totalAllowance,
+        totalBonus,
+        otherSalary,
+        otherDeductions: otherDeductionsAdj,
+        calculatedSalary,
+        insuranceDeduction,
+        pitDeduction,
+        unionFee,
+        netSalary,
+      },
+    });
+    
+    res.json(updated);
+  } catch (e: any) {
+    console.error("Error deleting adjustment:", e);
+    res.status(500).json({ message: e.message || 'Lỗi xóa điều chỉnh' });
+  }
+});
+
+// Cập nhật tạm ứng
+app.put('/api/salary-records/:id/advance-payment', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount } = req.body;
+    
+    const record = await prisma.salaryRecord.findUnique({ where: { id } });
+    if (!record) {
+      return res.status(404).json({ message: 'Không tìm thấy bảng lương' });
+    }
+    
+    const user = await prisma.user.findUnique({ where: { id: record.userId } });
+    const systemConfig = await prisma.systemConfig.findUnique({ where: { id: 'default_config' } });
+    const configExtra = (systemConfig?.insuranceRules as any) || {};
+    const insuranceRate = configExtra.insuranceRate ?? 10.5;
+    const unionFeeRate = configExtra.unionFeeRate ?? 1;
+    const personalRelief = configExtra.personalRelief ?? 11000000;
+    const dependentRelief = configExtra.dependentRelief ?? 4400000;
+    const pitSteps = (systemConfig?.pitSteps as any) || configExtra.pitSteps || [];
+    
+    const calculatedSalary = Number(record.calculatedSalary || 0);
+    const insuranceBase = Math.min(calculatedSalary, Number(systemConfig?.maxInsuranceBase || 36000000));
+    const insuranceDeduction = insuranceBase * (insuranceRate / 100);
+    const unionFee = insuranceBase * (unionFeeRate / 100);
+    
+    const TN_ct = calculatedSalary - insuranceDeduction - unionFee - personalRelief - (dependentRelief * (user?.numberOfDependents || 0));
+    let pitDeduction = 0;
+    if (TN_ct > 0) {
+      const sortedSteps = [...pitSteps].sort((a: any, b: any) => a.threshold - b.threshold);
+      for (const step of sortedSteps) {
+        if (TN_ct <= step.threshold) {
+          pitDeduction = (TN_ct * step.rate / 100) - (step.subtraction || 0);
+          break;
+        }
+      }
+      if (pitDeduction < 0) pitDeduction = 0;
+    }
+    
+    const advancePayment = Number(amount || 0);
+    const otherDeductions = Number(record.otherDeductions || 0);
+    const netSalary = (calculatedSalary - insuranceDeduction - unionFee - pitDeduction - advancePayment - otherDeductions) * ((user?.probationRate || 100) / 100);
+    
+    const updated = await prisma.salaryRecord.update({
+      where: { id },
+      data: {
+        advancePayment,
+        netSalary,
+      },
+    });
+    
+    res.json(updated);
+  } catch (e: any) {
+    console.error("Error updating advance payment:", e);
+    res.status(500).json({ message: e.message || 'Lỗi cập nhật tạm ứng' });
+  }
+});
+
+// Cập nhật trạng thái bảng lương (approve/reject)
+app.put('/api/salary-records/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, rejectionReason } = req.body;
+    
+    const record = await prisma.salaryRecord.findUnique({ where: { id } });
+    if (!record) {
+      return res.status(404).json({ message: 'Không tìm thấy bảng lương' });
+    }
+    
+    const updateData: any = { status };
+    if (status === 'REJECTED' && rejectionReason) {
+      updateData.rejectionReason = rejectionReason;
+    }
+    if (status === 'PENDING_HR' || status === 'APPROVED') {
+      updateData.sentToHrAt = new Date();
+    }
+    
+    const updated = await prisma.salaryRecord.update({
+      where: { id },
+      data: updateData,
+    });
+    
+    res.json(updated);
+  } catch (e: any) {
+    console.error("Error updating salary status:", e);
+    res.status(500).json({ message: e.message || 'Lỗi cập nhật trạng thái' });
+  }
+});
+
 // API Nạp dữ liệu
 app.get('/api/seed-data-secret', async (req, res) => {
     try {
