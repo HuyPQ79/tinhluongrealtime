@@ -169,12 +169,34 @@ createCrud('salaryRank', ['ranks', 'salary-ranks'], {
 });
 createCrud('salaryGrade', ['salary-grades', 'grades']);
 createCrud('dailyWorkItem', ['daily-work-items', 'daily-works']);
-createCrud('pieceworkConfig', ['piecework-configs']);
+createCrud('pieceworkConfig', ['piecework-configs'], {
+  mapOut: (row: any) => ({
+    ...row,
+    targetOutput: row.targetOutput ?? 0,
+    unitPrice: Number(row.unitPrice || 0),
+  }),
+  mapIn: (body: any) => ({
+    ...body,
+    targetOutput: body.targetOutput ?? 0,
+    unitPrice: body.unitPrice ?? 0,
+  }),
+});
 createCrud('holiday', ['holidays']);
 createCrud('bonusType', ['bonus-types']);
 createCrud('annualBonusPolicy', ['bonus-policies']);
 createCrud('auditLog', ['audit', 'audit-logs']);
-createCrud('evaluationRequest', ['evaluations']);
+createCrud('evaluationRequest', ['evaluations'], {
+  findManyArgs: { include: { user: true } },
+  mapOut: (row: any) => {
+    const user = row.user || {};
+    return {
+      ...row,
+      userName: user.name || '',
+      createdAt: row.createdAt ? row.createdAt.toISOString() : new Date().toISOString(),
+      scope: row.scope || undefined,
+    };
+  },
+});
 
 // ==========================================
 // API USER (FIX LỖI JOINDATE & 500 ERROR)
@@ -338,9 +360,23 @@ app.post('/api/config/system', async (req, res) => {
 app.get('/api/users', async (req, res) => {
     try {
         const users = await prisma.user.findMany({ include: { department: true } });
-        // @ts-ignore
-        res.json(users.map(({ password, ...u }) => u));
-    } catch (e) { res.status(500).json({error: "Lỗi lấy users"}); }
+        // Map dữ liệu để khớp với types.ts
+        const clean = users.map((u: any) => {
+            const { password, ...rest } = u;
+            return {
+                ...rest,
+                avatar: rest.avatar || '',
+                salaryHistory: [], // Frontend có thể tính từ lịch sử
+                assignedDeptIds: rest.currentDeptId ? [rest.currentDeptId] : [],
+                activeAssignments: [],
+                joinDate: rest.joinDate ? rest.joinDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            };
+        });
+        res.json(clean);
+    } catch (e) { 
+        console.error("Error getting users:", e);
+        res.status(500).json({error: "Lỗi lấy users"}); 
+    }
 });
 
 app.delete('/api/users/:id', async (req, res) => {
@@ -349,15 +385,62 @@ app.delete('/api/users/:id', async (req, res) => {
 });
 
 app.get('/api/attendance', async (req, res) => {
-    try { const { month } = req.query; const records = await prisma.attendanceRecord.findMany({ where: month ? { date: { startsWith: month as string } } : {} }); res.json(records); } 
-    catch(e: any) { res.status(500).json({ error: e.message }); }
+    try { 
+        const { month } = req.query; 
+        const where = month ? { date: { startsWith: month as string } } : {};
+        const records = await prisma.attendanceRecord.findMany({ where });
+        // Map dữ liệu để khớp với types.ts
+        const clean = records.map((r: any) => ({
+            ...r,
+            date: r.date, // Đã là string YYYY-MM-DD
+            sentToHrAt: r.sentToHrAt ? r.sentToHrAt.toISOString() : undefined,
+            rejectionReason: r.rejectionReason || undefined,
+            dailyWorkItemId: r.dailyWorkItemId || undefined,
+            overtimeDailyWorkItemId: r.overtimeDailyWorkItemId || undefined,
+        }));
+        res.json(clean); 
+    } 
+    catch(e: any) { 
+        console.error("Error getting attendance:", e);
+        res.status(500).json({ error: e.message }); 
+    }
 });
 app.post('/api/attendance', async (req, res) => {
     try {
-        const data = req.body; const records = Array.isArray(data) ? data : [data]; const results = [];
-        for (const rec of records) results.push(await prisma.attendanceRecord.upsert({ where: { userId_date: { userId: rec.userId, date: rec.date } }, update: rec, create: rec }));
+        const data = req.body; 
+        const records = Array.isArray(data) ? data : [data]; 
+        const results = [];
+        for (const rec of records) {
+            // Chuẩn hóa dữ liệu trước khi lưu
+            const cleanRec: any = {
+                id: rec.id || `att_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                userId: rec.userId,
+                date: rec.date, // YYYY-MM-DD string
+                type: rec.type || 'TIME',
+                hours: rec.hours ?? 8,
+                overtimeHours: rec.overtimeHours ?? 0,
+                otRate: rec.otRate ?? 1.5,
+                isOvertimeWithOutput: rec.isOvertimeWithOutput ?? false,
+                output: rec.output || null,
+                pieceworkUnitPrice: rec.pieceworkUnitPrice ? parseFloat(rec.pieceworkUnitPrice) : null,
+                dailyWorkItemId: rec.dailyWorkItemId || null,
+                overtimeDailyWorkItemId: rec.overtimeDailyWorkItemId || null,
+                status: rec.status || 'DRAFT',
+                notes: rec.notes || null,
+                sentToHrAt: rec.sentToHrAt ? new Date(rec.sentToHrAt) : null,
+                rejectionReason: rec.rejectionReason || null,
+            };
+            results.push(await prisma.attendanceRecord.upsert({ 
+                where: { userId_date: { userId: cleanRec.userId, date: cleanRec.date } }, 
+                update: cleanRec, 
+                create: cleanRec 
+            }));
+        }
         res.json({ success: true, count: results.length });
-    } catch(e: any) { res.status(500).json({ error: e.message }); }
+    } catch(e: any) { 
+        console.error("Error saving attendance:", e);
+        res.status(500).json({ error: e.message }); 
+    }
 });
 
 // ==========================================
@@ -368,11 +451,63 @@ app.get('/api/salary-records', async (req, res) => {
   try {
     const { month } = req.query;
     const where = month ? { date: { startsWith: month as string } } : {};
-    const records = await prisma.salaryRecord.findMany({ where, include: { user: true } });
-    // loại bỏ password khi include user
+    const records = await prisma.salaryRecord.findMany({ 
+      where, 
+      include: { 
+        user: {
+          include: {
+            department: true
+          }
+        }
+      } 
+    });
+    // Map dữ liệu để khớp với types.ts
     const clean = records.map((r: any) => {
-      if (r.user && r.user.password) delete r.user.password;
-      return r;
+      const user = r.user || {};
+      if (user.password) delete user.password;
+      
+      return {
+        ...r,
+        userName: user.name || '',
+        positionName: user.currentPosition || '',
+        department: user.currentDeptId || '',
+        // Đảm bảo tất cả các trường tính toán có giá trị mặc định
+        Ctc: r.Ctc ?? 0,
+        Ctt: r.Ctt ?? 0,
+        Cn: r.Cn ?? 0,
+        NCD: r.NCD ?? 0,
+        NL: r.NL ?? 0,
+        NCL: r.NCL ?? 0,
+        NKL: r.NKL ?? 0,
+        NCV: r.NCV ?? 0,
+        LCB_dm: Number(r.LCB_dm || 0),
+        LHQ_dm: Number(r.LHQ_dm || 0),
+        LSL_dm: Number(r.LSL_dm || 0),
+        SL_khoan: r.SL_khoan ?? 0,
+        SL_tt: r.SL_tt ?? 0,
+        DG_khoan: Number(r.DG_khoan || 0),
+        HS_tn: r.HS_tn ?? 0,
+        probationRate: r.probationRate ?? 100,
+        otherSalary: Number(r.otherSalary || 0),
+        overtimeSalary: Number(r.overtimeSalary || 0),
+        unionFee: Number(r.unionFee || 0),
+        otherDeductions: Number(r.otherDeductions || 0),
+        calculatedSalary: Number(r.calculatedSalary || 0),
+        actualBaseSalary: Number(r.actualBaseSalary || 0),
+        actualEfficiencySalary: Number(r.actualEfficiencySalary || 0),
+        actualPieceworkSalary: Number(r.actualPieceworkSalary || 0),
+        totalAllowance: Number(r.totalAllowance || 0),
+        totalBonus: Number(r.totalBonus || 0),
+        insuranceDeduction: Number(r.insuranceDeduction || 0),
+        pitDeduction: Number(r.pitDeduction || 0),
+        advancePayment: Number(r.advancePayment || 0),
+        netSalary: Number(r.netSalary || 0),
+        adjustments: r.adjustments || [],
+        calculationLog: r.calculationLog ? (typeof r.calculationLog === 'string' ? r.calculationLog : JSON.stringify(r.calculationLog)) : undefined,
+        lastUpdated: r.lastUpdated ? r.lastUpdated.toISOString() : new Date().toISOString(),
+        sentToHrAt: r.sentToHrAt ? r.sentToHrAt.toISOString() : undefined,
+        rejectionReason: r.rejectionReason || undefined,
+      };
     });
     res.json(clean);
   } catch (e: any) {
@@ -386,13 +521,76 @@ app.post('/api/salary-records', async (req, res) => {
     if (!body.userId || !body.date) {
       return res.status(400).json({ message: 'Thiếu userId hoặc date (YYYY-MM)' });
     }
+    
+    // Chuẩn hóa dữ liệu trước khi lưu (loại bỏ các trường computed)
+    const { userName, positionName, department, ...dbData } = body;
+    
+    // Đảm bảo các trường Decimal được chuyển đổi đúng
+    const cleanData: any = {
+      id: dbData.id || `sal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      userId: dbData.userId,
+      date: dbData.date,
+      status: dbData.status || 'DRAFT',
+      Ctc: dbData.Ctc ?? 0,
+      Ctt: dbData.Ctt ?? 0,
+      Cn: dbData.Cn ?? 0,
+      NCD: dbData.NCD ?? 0,
+      NL: dbData.NL ?? 0,
+      NCL: dbData.NCL ?? 0,
+      NKL: dbData.NKL ?? 0,
+      NCV: dbData.NCV ?? 0,
+      LCB_dm: dbData.LCB_dm ?? 0,
+      LHQ_dm: dbData.LHQ_dm ?? 0,
+      LSL_dm: dbData.LSL_dm ?? 0,
+      SL_khoan: dbData.SL_khoan ?? 0,
+      SL_tt: dbData.SL_tt ?? 0,
+      DG_khoan: dbData.DG_khoan ?? 0,
+      HS_tn: dbData.HS_tn ?? 0,
+      probationRate: dbData.probationRate ?? 100,
+      actualBaseSalary: dbData.actualBaseSalary ?? 0,
+      actualEfficiencySalary: dbData.actualEfficiencySalary ?? 0,
+      actualPieceworkSalary: dbData.actualPieceworkSalary ?? 0,
+      otherSalary: dbData.otherSalary ?? 0,
+      totalAllowance: dbData.totalAllowance ?? 0,
+      totalBonus: dbData.totalBonus ?? 0,
+      overtimeSalary: dbData.overtimeSalary ?? 0,
+      insuranceDeduction: dbData.insuranceDeduction ?? 0,
+      pitDeduction: dbData.pitDeduction ?? 0,
+      unionFee: dbData.unionFee ?? 0,
+      advancePayment: dbData.advancePayment ?? 0,
+      otherDeductions: dbData.otherDeductions ?? 0,
+      calculatedSalary: dbData.calculatedSalary ?? 0,
+      netSalary: dbData.netSalary ?? 0,
+      calculationLog: dbData.calculationLog ? (typeof dbData.calculationLog === 'string' ? JSON.parse(dbData.calculationLog) : dbData.calculationLog) : null,
+      adjustments: dbData.adjustments ? (Array.isArray(dbData.adjustments) ? dbData.adjustments : JSON.parse(dbData.adjustments)) : null,
+      sentToHrAt: dbData.sentToHrAt ? new Date(dbData.sentToHrAt) : null,
+      rejectionReason: dbData.rejectionReason || null,
+    };
+    
     const record = await prisma.salaryRecord.upsert({
-      where: { userId_date: { userId: body.userId, date: body.date } },
-      update: body,
-      create: body,
+      where: { userId_date: { userId: cleanData.userId, date: cleanData.date } },
+      update: cleanData,
+      create: cleanData,
     });
-    res.json(record);
+    
+    // Trả về với các trường computed
+    const user = await prisma.user.findUnique({ 
+      where: { id: record.userId },
+      include: { department: true }
+    });
+    
+    const response = {
+      ...record,
+      userName: user?.name || '',
+      positionName: user?.currentPosition || '',
+      department: user?.currentDeptId || '',
+      lastUpdated: record.lastUpdated ? record.lastUpdated.toISOString() : new Date().toISOString(),
+      sentToHrAt: record.sentToHrAt ? record.sentToHrAt.toISOString() : undefined,
+    };
+    
+    res.json(response);
   } catch (e: any) {
+    console.error("Error saving salary record:", e);
     res.status(500).json({ message: e.message || 'Lỗi lưu bảng lương' });
   }
 });

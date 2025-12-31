@@ -27,6 +27,29 @@ enum UserStatus {
   INACTIVE
   MATERNITY
   PROBATION
+  PENDING_APPROVAL
+}
+
+enum RecordStatus {
+  DRAFT
+  PENDING
+  PENDING_MANAGER
+  PENDING_GDK
+  PENDING_BLD
+  PENDING_HR
+  APPROVED
+  REJECTED
+}
+
+enum AttendanceType {
+  TIME
+  PIECEWORK
+  DAILY
+  MODE
+  HOLIDAY
+  PAID_LEAVE
+  UNPAID
+  WAITING
 }
 
 model Department {
@@ -131,24 +154,34 @@ model SalaryRank {
 
 // Bậc lương (Grades)
 model SalaryGrade {
-  id         String     @id @default(cuid())
-  name       String
-  level      Int        @default(1)
-  multiplier Float      @default(1.0) // Hệ số
-  amount     Decimal    @default(0) @db.Decimal(18, 2) // Số tiền
-  rankId     String
-  rank       SalaryRank @relation(fields: [rankId], references: [id], onDelete: Cascade)
+  id              String   @id @default(cuid())
+  name            String
+  level           Int      @default(1)
+  multiplier      Float    @default(1.0) // Hệ số
+  amount          Decimal  @default(0) @db.Decimal(18, 2) // Số tiền
+  baseSalary      Decimal  @default(0) @db.Decimal(18, 2) // Lương cơ bản
+  efficiencySalary Decimal @default(0) @db.Decimal(18, 2) // Lương hiệu quả
+  fixedAllowance  Decimal  @default(0) @db.Decimal(18, 2) // Phụ cấp cố định
+  flexibleAllowance Decimal @default(0) @db.Decimal(18, 2) // Phụ cấp linh hoạt
+  otherSalary     Decimal  @default(0) @db.Decimal(18, 2) // Lương khác
+  fixedBonuses    Json?    // Mảng các thưởng cố định theo tháng
+  rankId          String
+  rank            SalaryRank @relation(fields: [rankId], references: [id], onDelete: Cascade)
   
   @@map("salary_grades")
 }
 
-// Đơn giá sản phẩm (Lương khoán)
+// Đơn giá sản phẩm (Lương khoán) - Cấu hình theo user và tháng
 model PieceworkConfig {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  name      String
-  unitPrice Decimal  @default(0) @db.Decimal(18, 2)
+  id          String   @id @default(cuid())
+  userId      String
+  month       String   // YYYY-MM
+  targetOutput Float    @default(0) // Sản lượng mục tiêu
+  unitPrice   Decimal  @default(0) @db.Decimal(18, 2) // Đơn giá
   
+  @@unique([userId, month])
+  @@index([userId])
+  @@index([month])
   @@map("piecework_configs")
 }
 
@@ -203,6 +236,9 @@ model Criterion {
   description    String?           @db.Text
   points         Float             @default(0)
   type           String            // BONUS, PENALTY
+  unit           String?           // PERCENT | AMOUNT
+  value          Float             @default(0)
+  threshold      Float             @default(0)
   target         String            // MONTHLY, PROJECT
   proofRequired  Boolean           @default(false)
   groupId        String?
@@ -216,16 +252,20 @@ model EvaluationRequest {
   user            User         @relation(fields: [userId], references: [id])
   criteriaId      String
   criteriaName    String
-  type            String
-  target          String
+  type            String       // BONUS | PENALTY
+  scope           String?      // MAIN_JOB | SIDE_JOB
+  target          String       @default("MONTHLY_SALARY") // MONTHLY_SALARY | RESERVED_BONUS
   points          Float
   description     String?      @db.Text
   proofFileName   String?
   requesterId     String
-  status          String       @default("PENDING") // APPROVED, REJECTED
+  status          RecordStatus @default(PENDING)
   createdAt       DateTime     @default(now())
   rejectionReason String?      @db.Text
   
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
   @@map("evaluation_requests")
 }
 
@@ -234,23 +274,29 @@ model EvaluationRequest {
 // ==========================================
 
 model AttendanceRecord {
-  id                   String         @id @default(cuid())
-  userId               String
-  user                 User           @relation(fields: [userId], references: [id])
-  date                 String         // YYYY-MM-DD
-  type                 String         @default("TIME") 
-  hours                Float          @default(8)
-  overtimeHours        Float          @default(0)
-  otRate               Float          @default(1.5)
-  isOvertimeWithOutput Boolean        @default(false)
-  output               Float?         // Sản lượng (nếu làm khoán)
-  pieceworkUnitPrice   Decimal?       @db.Decimal(18, 2)
-  status               String         @default("DRAFT")
-  notes                String?        @db.Text
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  id                      String         @id @default(cuid())
+  userId                  String
+  user                    User           @relation(fields: [userId], references: [id])
+  date                    String         // YYYY-MM-DD
+  type                    AttendanceType @default(TIME)
+  hours                   Float          @default(8)
+  overtimeHours           Float          @default(0)
+  otRate                  Float          @default(1.5)
+  isOvertimeWithOutput    Boolean        @default(false)
+  output                  Float?         // Sản lượng (nếu làm khoán)
+  pieceworkUnitPrice      Decimal?       @db.Decimal(18, 2)
+  dailyWorkItemId         String?        // ID công việc nhật
+  overtimeDailyWorkItemId String?        // ID công việc nhật tăng ca
+  status                  RecordStatus   @default(DRAFT)
+  notes                   String?        @db.Text
+  sentToHrAt              DateTime?
+  rejectionReason         String?        @db.Text
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
 
   @@unique([userId, date])
+  @@index([date])
+  @@index([status])
   @@map("attendance_records")
 }
 
@@ -259,23 +305,50 @@ model SalaryRecord {
   userId                 String
   user                   User         @relation(fields: [userId], references: [id])
   date                   String       // YYYY-MM
-  status                 String       @default("DRAFT")
+  status                 RecordStatus @default(DRAFT)
+  
+  // Các chỉ số snapshot lúc tính lương
+  Ctc                    Float        @default(0) // Công tiêu chuẩn
+  Ctt                    Float        @default(0) // Công thực tế
+  Cn                     Float        @default(0) // Công nhật
+  NCD                    Float        @default(0) // Nghỉ chế độ
+  NL                     Float        @default(0) // Nghỉ lễ
+  NCL                    Float        @default(0) // Nghỉ có lương
+  NKL                    Float        @default(0) // Nghỉ không lương
+  NCV                    Float        @default(0) // Nghỉ chờ việc
+  LCB_dm                 Decimal      @default(0) @db.Decimal(18, 2) // Lương CB định mức
+  LHQ_dm                 Decimal      @default(0) @db.Decimal(18, 2) // Lương HQ định mức
+  LSL_dm                 Decimal      @default(0) @db.Decimal(18, 2) // Lương khoán định mức
+  SL_khoan               Float        @default(0) // Sản lượng khoán
+  SL_tt                  Float        @default(0) // Sản lượng thực tế
+  DG_khoan               Decimal      @default(0) @db.Decimal(18, 2) // Đơn giá khoán
+  HS_tn                  Float        @default(0) // Hệ số thâm niên
+  probationRate          Int          @default(100) // Tỷ lệ thử việc snapshot
   
   // Các thành phần lương (Kết quả tính toán)
   actualBaseSalary       Decimal      @default(0) @db.Decimal(18, 2)
   actualEfficiencySalary Decimal      @default(0) @db.Decimal(18, 2)
   actualPieceworkSalary  Decimal      @default(0) @db.Decimal(18, 2)
+  otherSalary            Decimal      @default(0) @db.Decimal(18, 2) // Lương khác (OT, công nhật, nghỉ lễ)
   totalAllowance         Decimal      @default(0) @db.Decimal(18, 2)
   totalBonus             Decimal      @default(0) @db.Decimal(18, 2)
-  insuranceDeduction     Decimal      @default(0) @db.Decimal(18, 2)
+  overtimeSalary         Decimal      @default(0) @db.Decimal(18, 2) // Lương tăng ca
+  insuranceDeduction      Decimal      @default(0) @db.Decimal(18, 2)
   pitDeduction           Decimal      @default(0) @db.Decimal(18, 2)
+  unionFee               Decimal      @default(0) @db.Decimal(18, 2) // Công đoàn
   advancePayment         Decimal      @default(0) @db.Decimal(18, 2)
+  otherDeductions        Decimal      @default(0) @db.Decimal(18, 2) // Khấu trừ khác
+  calculatedSalary       Decimal      @default(0) @db.Decimal(18, 2) // Tổng Gross
   netSalary              Decimal      @default(0) @db.Decimal(18, 2)
   
   calculationLog         Json?        // Log chi tiết công thức
-  updatedAt              DateTime     @updatedAt
+  adjustments            Json?        // Mảng các điều chỉnh tay
+  sentToHrAt             DateTime?
+  rejectionReason        String?      @db.Text
+  lastUpdated            DateTime     @updatedAt
 
   @@unique([userId, date])
+  @@index([date])
   @@map("salary_records")
 }
 
@@ -285,7 +358,9 @@ model AuditLog {
   actor          String
   details        String   @db.Text
   timestamp      DateTime @default(now())
+  isConfigAction Boolean  @default(false)
   
+  @@index([timestamp])
   @@map("audit_logs")
 }
 
