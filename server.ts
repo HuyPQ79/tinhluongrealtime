@@ -6,14 +6,14 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-// --- IMPORT SEEDER ---
+// Import Seeder
 import { seedDatabase } from './seeder';
 
 // --- ERROR TRAP ---
 process.on('uncaughtException', (err) => { console.error('🔥 CRITICAL:', err); });
 process.on('unhandledRejection', (reason, promise) => { console.error('🔥 PROMISE:', reason); });
 
-console.log("=== SERVER RESTARTING (FIX JOINDATE + ALIAS ROUTES) ===");
+console.log("=== SERVER RESTARTING (FIX DATABASE SYNC) ===");
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '8080');
@@ -26,14 +26,14 @@ async function initDatabase() {
         await prisma.$queryRaw`SELECT 1`;
         console.log("--> DB Connected.");
         
-        // Default Config
+        // Tạo Config mặc định
         const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
         if (!config) {
             await prisma.systemConfig.create({
                 data: { id: "default_config", baseSalary: 1800000, standardWorkDays: 26, insuranceBaseSalary: 1800000, maxInsuranceBase: 36000000 }
             });
         }
-        // Default Admin
+        // Tạo Admin mặc định
         const userCount = await prisma.user.count();
         if (userCount === 0) {
             const salt = await bcrypt.genSalt(10);
@@ -48,14 +48,7 @@ initDatabase();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Middleware log request
-app.use((req, res, next) => {
-    console.log(`[REQ] ${req.method} ${req.url}`);
-    next();
-});
-
-// --- HELPER: TẠO API VỚI NHIỀU TÊN GỌI KHÁC NHAU ---
-// Frontend gọi api/formulas hay api/salary-formulas đều được
+// Helper CRUD
 const createCrud = (modelName: string, routes: string[]) => {
     // @ts-ignore
     const model = prisma[modelName];
@@ -82,9 +75,7 @@ const createCrud = (modelName: string, routes: string[]) => {
     });
 };
 
-// ==========================================
-// API CONFIG (MỞ RỘNG ROUTE ĐỂ FRONTEND KHÔNG BỊ 404)
-// ==========================================
+// API Config (Đa dạng hóa route)
 createCrud('salaryFormula', ['formulas', 'salary-formulas']); 
 createCrud('salaryVariable', ['variables', 'salary-variables']);
 createCrud('criterionGroup', ['criteria/groups', 'criterion-groups']);
@@ -96,15 +87,13 @@ createCrud('pieceworkConfig', ['piecework-configs']);
 createCrud('holiday', ['holidays']);
 createCrud('auditLog', ['audit', 'audit-logs']);
 
-// ==========================================
-// API USER (FIX LỖI JOINDATE & 500 ERROR)
-// ==========================================
+// === API USER (QUAN TRỌNG: ĐÃ THÊM BỘ LỌC DỮ LIỆU) ===
 app.post('/api/users', async (req, res) => {
   try {
     const raw = req.body;
-    console.log("--> User Data Raw:", JSON.stringify(raw));
+    console.log("--> Nhận dữ liệu User:", JSON.stringify(raw));
 
-    // 1. CHUẨN HÓA DỮ LIỆU (Tránh lỗi thừa trường)
+    // 1. TẠO ĐỐI TƯỢNG SẠCH (Chỉ lấy trường cần thiết)
     const cleanData: any = {
         id: raw.id || "user_" + Date.now(),
         username: raw.username,
@@ -114,41 +103,44 @@ app.post('/api/users', async (req, res) => {
         status: raw.status || "ACTIVE",
         roles: (raw.roles && raw.roles.length > 0) ? raw.roles : ["NHAN_VIEN"],
         paymentType: raw.paymentType || "TIME",
-        efficiencySalary: raw.efficiencySalary || 0,
-        pieceworkUnitPrice: raw.pieceworkUnitPrice || 0,
-        reservedBonusAmount: raw.reservedBonusAmount || 0,
-        probationRate: raw.probationRate || 100,
-        numberOfDependents: raw.numberOfDependents || 0,
-        // Map departmentId -> currentDeptId
+        // Ép kiểu số để tránh lỗi DB
+        efficiencySalary: Number(raw.efficiencySalary) || 0,
+        pieceworkUnitPrice: Number(raw.pieceworkUnitPrice) || 0,
+        reservedBonusAmount: Number(raw.reservedBonusAmount) || 0,
+        probationRate: Number(raw.probationRate) || 100,
+        numberOfDependents: Number(raw.numberOfDependents) || 0,
+        avatar: raw.avatar || null,
+        // Map departmentId sang currentDeptId
         currentDeptId: raw.currentDeptId || raw.departmentId || null
     };
 
-    // 2. FIX LỖI DATE (THỦ PHẠM CHÍNH)
-    // Nếu joinDate rỗng hoặc null, lấy ngày hiện tại. Nếu có, ép kiểu về ISO.
-    try {
-        if (raw.joinDate && raw.joinDate !== "") {
+    // Nếu currentDeptId rỗng thì cho về null
+    if (!cleanData.currentDeptId || cleanData.currentDeptId === "") {
+        cleanData.currentDeptId = null;
+    }
+
+    // 2. XỬ LÝ NGÀY THÁNG (Fix lỗi 500 Invalid Date)
+    if (raw.joinDate && raw.joinDate !== "") {
+        try {
             cleanData.joinDate = new Date(raw.joinDate).toISOString();
-        } else {
+        } catch {
             cleanData.joinDate = new Date().toISOString();
         }
-    } catch (err) {
-        console.error("Lỗi Date Parser, dùng ngày mặc định");
+    } else {
         cleanData.joinDate = new Date().toISOString();
     }
 
-    // 3. Xử lý Password
+    // 3. XỬ LÝ MẬT KHẨU
     if (raw.password && raw.password.trim() !== "") {
         const salt = await bcrypt.genSalt(10);
         cleanData.password = await bcrypt.hash(raw.password, salt);
     } else if (!raw.id) {
-        // Tạo mới bắt buộc có pass
+        // Tạo mới mặc định pass 123
         const salt = await bcrypt.genSalt(10);
         cleanData.password = await bcrypt.hash("123", salt);
     }
 
-    if (cleanData.currentDeptId === "") cleanData.currentDeptId = null;
-
-    console.log("--> User Data Clean:", JSON.stringify(cleanData));
+    console.log("--> Dữ liệu sạch sẽ lưu:", JSON.stringify(cleanData));
 
     const user = await prisma.user.upsert({
       where: { id: cleanData.id },
@@ -158,8 +150,9 @@ app.post('/api/users', async (req, res) => {
     
     res.json(user);
   } catch (e: any) { 
-      console.error("USER ERROR:", e);
-      res.status(500).json({ error: "Lỗi lưu User: " + e.message }); 
+      console.error("LỖI LƯU USER:", e);
+      // Trả về lỗi chi tiết cho Frontend xem
+      res.status(500).json({ error: "Lỗi Server: " + e.message }); 
   }
 });
 
@@ -207,17 +200,17 @@ app.post('/api/attendance', async (req, res) => {
 app.get('/api/seed-data-secret', async (req, res) => {
     try {
         await seedDatabase();
-        res.json({ success: true, message: "OK" });
+        res.json({ success: true, message: "OK! Dữ liệu đã được nạp." });
     } catch (error: any) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// Static
+// Static Files
 app.get('/api/ping', (req, res) => { res.json({ status: "OK" }); });
 const distPath = path.join(process.cwd(), 'dist');
 if (fs.existsSync(distPath)) app.use(express.static(distPath));
 app.get('*', (req, res) => { 
     if (fs.existsSync(path.join(distPath, 'index.html'))) res.sendFile(path.join(distPath, 'index.html'));
-    else res.send("Backend OK.");
+    else res.send("Backend OK. Frontend waiting...");
 });
 
 app.listen(PORT, '0.0.0.0', () => { console.log(`Server running on ${PORT}`); });
