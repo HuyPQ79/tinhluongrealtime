@@ -222,7 +222,18 @@ app.post('/api/users', async (req, res) => {
         probationRate: raw.probationRate || 100,
         numberOfDependents: raw.numberOfDependents || 0,
         // Map departmentId -> currentDeptId
-        currentDeptId: raw.currentDeptId || raw.departmentId || null
+        currentDeptId: raw.currentDeptId || raw.departmentId || null,
+        currentPosition: raw.currentPosition || null,
+        currentRankId: raw.currentRankId || null,
+        currentGradeId: raw.currentGradeId || null,
+        gender: raw.gender || null,
+        birthday: raw.birthday ? new Date(raw.birthday) : null,
+        address: raw.address || null,
+        identityNumber: raw.identityNumber || null,
+        bankAccount: raw.bankAccount || null,
+        bankName: raw.bankName || null,
+        taxCode: raw.taxCode || null,
+        socialInsuranceNo: raw.socialInsuranceNo || null,
     };
 
     // 2. FIX LỖI DATE (THỦ PHẠM CHÍNH)

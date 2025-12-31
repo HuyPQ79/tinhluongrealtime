@@ -92,6 +92,7 @@ model User {
   department           Department?  @relation(fields: [currentDeptId], references: [id])
   currentRankId        String?      // R1, R2...
   currentGradeId       String?      // G_R1_1...
+  currentPosition      String?      // Chức vụ hiện tại
   
   // -- Cấu hình lương cá nhân --
   paymentType          String       @default("TIME") // TIME, PIECEWORK
@@ -212,7 +213,8 @@ model SystemConfig {
   insuranceBaseSalary Decimal  @default(1800000) @db.Decimal(18, 2)
   maxInsuranceBase    Decimal  @default(36000000) @db.Decimal(18, 2)
   pitSteps            Json?    // Biểu thuế lũy tiến
-  insuranceRules      Json?    // Tỷ lệ bảo hiểm
+  seniorityRules      Json?    // Quy tắc tính hệ số thâm niên
+  insuranceRules      Json?    // Tỷ lệ bảo hiểm và các cấu hình mở rộng
   updatedAt           DateTime @updatedAt
   
   @@map("system_configs")

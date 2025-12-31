@@ -1,274 +1,346 @@
-# 📘 HƯỚNG DẪN PUSH PRISMA SCHEMA TỪ MÁY TÍNH CÁ NHÂN
+# 📘 HƯỚNG DẪN CHI TIẾT: PUSH PRISMA SCHEMA TỪ MÁY TÍNH CÁ NHÂN
 
 ## 🎯 Mục đích
-Đồng bộ schema Prisma từ file `prisma/schema.prisma` lên database MySQL của bạn.
+Áp dụng các thay đổi trong file `schema.prisma` vào database MySQL của bạn.
 
 ---
 
-## 📋 BƯỚC 1: KIỂM TRA VÀ CHUẨN BỊ
+## 📋 BƯỚC 1: KIỂM TRA MÔI TRƯỜNG
 
-### 1.1. Kiểm tra Prisma đã được cài đặt
-Mở Terminal/PowerShell trong thư mục dự án và chạy:
+### 1.1. Kiểm tra Node.js và npm đã cài đặt
+Mở **PowerShell** hoặc **Command Prompt** và chạy:
+
+```bash
+node --version
+npm --version
+```
+
+**Kết quả mong đợi:** Hiển thị version (ví dụ: v20.x.x và 10.x.x)
+
+### 1.2. Kiểm tra Prisma đã cài đặt
 ```bash
 npx prisma --version
 ```
-Nếu chưa có, Prisma sẽ tự động tải về khi chạy lệnh.
 
-### 1.2. Tạo file `.env` (nếu chưa có)
-Tạo file `.env` ở thư mục gốc của dự án với nội dung:
-```env
-DATABASE_URL="mysql://username:password@localhost:3306/database_name"
-```
-
-**Ví dụ cụ thể:**
-```env
-# MySQL Local
-DATABASE_URL="mysql://root:123456@localhost:3306/hrm_realtime"
-
-# MySQL Remote (Cloud SQL, AWS RDS, etc.)
-DATABASE_URL="mysql://user:password@your-host:3306/database_name?sslaccept=strict"
-
-# MySQL với SSL
-DATABASE_URL="mysql://user:password@host:3306/db?sslmode=require"
-```
-
-**Lưu ý:**
-- Thay `username`, `password`, `localhost:3306`, `database_name` bằng thông tin thực tế của bạn
-- Đảm bảo database đã được tạo sẵn (Prisma không tự tạo database)
-- Nếu dùng MySQL 8.0+, có thể cần thêm `?allowPublicKeyRetrieval=true`
-
-### 1.3. Kiểm tra kết nối database
-```bash
-npx prisma db pull
-```
-Lệnh này sẽ kiểm tra kết nối. Nếu thành công, bạn sẽ thấy thông báo kết nối OK.
+**Kết quả mong đợi:** Hiển thị version Prisma (ví dụ: 5.12.0)
 
 ---
 
-## 📋 BƯỚC 2: GENERATE PRISMA CLIENT
+## 📋 BƯỚC 2: CẤU HÌNH DATABASE CONNECTION
 
-Trước khi push, cần generate Prisma Client để TypeScript nhận diện các model:
+### 2.1. Tạo file `.env` (nếu chưa có)
+
+Trong thư mục gốc dự án (`tinhluongrealtime`), tạo file `.env` với nội dung:
+
+```env
+# Database Connection
+DATABASE_URL="mysql://USERNAME:PASSWORD@HOST:PORT/DATABASE_NAME?schema=public"
+
+# Ví dụ cụ thể:
+# DATABASE_URL="mysql://root:123456@localhost:3306/hrm_db"
+# DATABASE_URL="mysql://admin:mypassword@127.0.0.1:3306/hrm_realtime"
+```
+
+**Giải thích:**
+- `USERNAME`: Tên đăng nhập MySQL (thường là `root`)
+- `PASSWORD`: Mật khẩu MySQL
+- `HOST`: Địa chỉ server (localhost hoặc 127.0.0.1 nếu chạy local)
+- `PORT`: Cổng MySQL (mặc định là 3306)
+- `DATABASE_NAME`: Tên database bạn muốn sử dụng
+
+### 2.2. Kiểm tra kết nối database
+
+Chạy lệnh để test kết nối:
+
+```bash
+npx prisma db pull --preview-feature
+```
+
+Nếu kết nối thành công, bạn sẽ thấy thông báo tương tự:
+```
+✔ Introspected 15 models and wrote them into schema.prisma in XXXms
+```
+
+**Nếu lỗi kết nối:**
+- Kiểm tra lại thông tin trong `.env`
+- Đảm bảo MySQL đang chạy
+- Kiểm tra firewall/antivirus có chặn port 3306 không
+
+---
+
+## 📋 BƯỚC 3: VALIDATE SCHEMA TRƯỚC KHI PUSH
+
+### 3.1. Kiểm tra syntax schema
+
+```bash
+npm run db:validate
+```
+
+Hoặc:
+
+```bash
+npx prisma validate
+```
+
+**Kết quả mong đợi:**
+```
+✔ The Prisma schema is valid!
+```
+
+**Nếu có lỗi:** Sửa các lỗi được báo trước khi tiếp tục.
+
+---
+
+## 📋 BƯỚC 4: GENERATE PRISMA CLIENT
+
+### 4.1. Tạo Prisma Client từ schema mới
+
+```bash
+npm run db:generate
+```
+
+Hoặc:
+
 ```bash
 npx prisma generate
 ```
 
 **Kết quả mong đợi:**
 ```
-✔ Generated Prisma Client (5.12.0) to ./node_modules/.prisma/client
+✔ Generated Prisma Client (5.12.0) to .\node_modules\@prisma\client in XXXms
 ```
 
 ---
 
-## 📋 BƯỚC 3: PUSH SCHEMA LÊN DATABASE
+## 📋 BƯỚC 5: PUSH SCHEMA VÀO DATABASE
 
-### 3.1. Phương pháp 1: `prisma db push` (Khuyến nghị cho development)
+### 5.1. Push schema (Khuyến nghị cho development)
 
-**Lệnh:**
+**Lệnh chính:**
+
+```bash
+npm run db:push
+```
+
+Hoặc:
+
 ```bash
 npx prisma db push
 ```
 
-**Lệnh này sẽ:**
-- ✅ Đọc file `prisma/schema.prisma`
-- ✅ So sánh với database hiện tại
-- ✅ Tự động tạo/cập nhật/xóa tables, columns, indexes
-- ✅ **KHÔNG** tạo migration files (phù hợp cho dev)
-- ✅ Reset database nếu có conflict (có thể mất dữ liệu!)
+**Quá trình sẽ:**
+1. ✅ So sánh schema hiện tại với database
+2. ✅ Tạo các bảng mới nếu chưa có
+3. ✅ Thêm các cột mới vào bảng hiện có
+4. ✅ Cập nhật các ràng buộc (constraints, indexes)
+5. ⚠️ **KHÔNG XÓA** dữ liệu hiện có (chỉ thêm/sửa)
 
-**Khi chạy lệnh, bạn sẽ thấy:**
+**Kết quả mong đợi:**
 ```
 ✔ Your database is now in sync with your Prisma schema.
 
 The following changes have been applied:
 
-  • CreateTable `users`
-  • CreateTable `departments`
-  • CreateTable `attendance_records`
-  • CreateTable `salary_records`
-  • ... (và các bảng khác)
+  • Added table `new_table_name`
+  • Added column `new_column` to table `existing_table`
+  • Updated column `column_name` in table `table_name`
+
+✔ Generated Prisma Client (5.12.0) to .\node_modules\@prisma\client in XXXms
 ```
 
-**⚠️ CẢNH BÁO:**
-- `db push` có thể **XÓA DỮ LIỆU** nếu có thay đổi lớn về cấu trúc
-- Chỉ dùng cho môi trường development
-- **KHÔNG** dùng cho production!
+### 5.2. Xác nhận thay đổi
 
-### 3.2. Phương pháp 2: `prisma migrate dev` (Khuyến nghị cho production)
+Khi Prisma hỏi xác nhận, nhập `y` hoặc `yes`:
 
-**Lệnh:**
+```
+? Are you sure you want to apply these changes? (y/N)
+```
+
+---
+
+## 📋 BƯỚC 6: KIỂM TRA KẾT QUẢ
+
+### 6.1. Mở Prisma Studio (GUI để xem database)
+
+```bash
+npm run db:studio
+```
+
+Hoặc:
+
+```bash
+npx prisma studio
+```
+
+**Kết quả:**
+- Mở trình duyệt tại `http://localhost:5555`
+- Bạn có thể xem tất cả các bảng và dữ liệu
+
+### 6.2. Kiểm tra bằng code
+
+Chạy server để test:
+
+```bash
+npm start
+```
+
+Kiểm tra các API endpoint có hoạt động không.
+
+---
+
+## 🔄 PHƯƠNG PHÁP THAY THẾ: MIGRATE (Cho Production)
+
+Nếu bạn muốn tạo migration history (khuyến nghị cho production):
+
+### Bước 1: Tạo migration
+
+```bash
+npm run db:migrate
+```
+
+Hoặc:
+
 ```bash
 npx prisma migrate dev --name sync_schema_with_frontend
 ```
 
 **Lệnh này sẽ:**
-- ✅ Tạo migration files trong `prisma/migrations/`
-- ✅ Áp dụng migration lên database
-- ✅ Generate Prisma Client tự động
-- ✅ An toàn hơn, có thể rollback
+- ✅ Tạo file migration trong `prisma/migrations/`
+- ✅ Áp dụng migration vào database
+- ✅ Generate Prisma Client
 
-**Khi chạy lệnh:**
+**Kết quả:**
 ```
-✔ Created migration `20250115_sync_schema_with_frontend` in prisma/migrations/
-
-The following migration(s) have been applied:
-
-migrations/
-  └─ 20250115_sync_schema_with_frontend/
-    └─ migration.sql
-
-✔ Generated Prisma Client (5.12.0) to ./node_modules/.prisma/client
+✔ Created migration `20250101_sync_schema_with_frontend` in XXXms
+✔ Applied migration `20250101_sync_schema_with_frontend` in XXXms
+✔ Generated Prisma Client (5.12.0) to .\node_modules\@prisma\client in XXXms
 ```
 
 ---
 
-## 📋 BƯỚC 4: XÁC MINH KẾT QUẢ
+## ⚠️ XỬ LÝ LỖI THƯỜNG GẶP
 
-### 4.1. Kiểm tra bằng Prisma Studio (GUI)
-```bash
-npx prisma studio
-```
-Mở trình duyệt tại `http://localhost:5555` để xem tất cả tables và dữ liệu.
+### Lỗi 1: "Can't reach database server"
 
-### 4.2. Kiểm tra bằng lệnh
-```bash
-npx prisma db pull
-```
-Lệnh này sẽ pull schema từ database về file, bạn có thể so sánh để đảm bảo đã sync đúng.
-
----
-
-## 🔧 XỬ LÝ LỖI THƯỜNG GẶP
-
-### ❌ Lỗi 1: "Can't reach database server"
-**Nguyên nhân:** Database không chạy hoặc thông tin kết nối sai.
+**Nguyên nhân:** Không kết nối được MySQL
 
 **Giải pháp:**
 1. Kiểm tra MySQL đang chạy:
    ```bash
-   # Windows
-   services.msc  # Tìm MySQL service
-   
-   # Hoặc kiểm tra bằng MySQL Workbench
+   # Windows (Services)
+   services.msc
+   # Tìm "MySQL" và đảm bảo đang "Running"
    ```
 
-2. Kiểm tra lại `DATABASE_URL` trong file `.env`
+2. Kiểm tra lại `DATABASE_URL` trong `.env`
 
-3. Test kết nối thủ công:
+3. Test kết nối bằng MySQL client:
    ```bash
-   mysql -u username -p -h localhost
+   mysql -u root -p -h localhost
    ```
 
-### ❌ Lỗi 2: "Database does not exist"
-**Nguyên nhân:** Database chưa được tạo.
+### Lỗi 2: "Table already exists"
+
+**Nguyên nhân:** Bảng đã tồn tại trong database
 
 **Giải pháp:**
-```sql
-CREATE DATABASE hrm_realtime CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-### ❌ Lỗi 3: "Table already exists"
-**Nguyên nhân:** Database đã có tables từ lần chạy trước.
-
-**Giải pháp:**
-- Option 1: Xóa và tạo lại (⚠️ MẤT DỮ LIỆU):
+- Prisma sẽ tự động merge, không cần lo lắng
+- Nếu muốn reset hoàn toàn (⚠️ XÓA DỮ LIỆU):
   ```bash
-  npx prisma db push --force-reset
+  npm run db:reset
   ```
 
-- Option 2: Dùng migrate để cập nhật an toàn:
-  ```bash
-  npx prisma migrate dev
-  ```
+### Lỗi 3: "Column cannot be null"
 
-### ❌ Lỗi 4: "Column cannot be null"
-**Nguyên nhân:** Có cột `NOT NULL` nhưng dữ liệu cũ có giá trị `NULL`.
+**Nguyên nhân:** Cột mới không có giá trị mặc định nhưng bảng đã có dữ liệu
 
 **Giải pháp:**
-1. Cập nhật dữ liệu cũ trước:
-   ```sql
-   UPDATE users SET currentPosition = '' WHERE currentPosition IS NULL;
-   ```
+- Thêm `@default(...)` vào schema
+- Hoặc xóa dữ liệu cũ trước khi push
 
-2. Hoặc thêm giá trị mặc định trong schema:
-   ```prisma
-   currentPosition String? @default("")
-   ```
+### Lỗi 4: "Syntax error in schema"
 
-### ❌ Lỗi 5: "Syntax error" trong schema
-**Nguyên nhân:** Schema có lỗi cú pháp.
+**Nguyên nhân:** Lỗi cú pháp trong `schema.prisma`
 
 **Giải pháp:**
 ```bash
 npx prisma validate
 ```
-Lệnh này sẽ kiểm tra và báo lỗi cụ thể.
+Sửa các lỗi được báo.
+
+### Lỗi 5: "Binary target not found"
+
+**Nguyên nhân:** Prisma Client chưa được generate cho platform hiện tại
+
+**Giải pháp:**
+```bash
+npx prisma generate
+```
 
 ---
 
-## 📝 QUY TRÌNH HOÀN CHỈNH (CHECKLIST)
+## 📝 CHECKLIST HOÀN CHỈNH
 
-- [ ] **Bước 1:** Tạo/cập nhật file `.env` với `DATABASE_URL` đúng
-- [ ] **Bước 2:** Kiểm tra kết nối: `npx prisma db pull`
-- [ ] **Bước 3:** Validate schema: `npx prisma validate`
-- [ ] **Bước 4:** Generate client: `npx prisma generate`
-- [ ] **Bước 5:** Push schema:
-  - Development: `npx prisma db push`
-  - Production: `npx prisma migrate dev --name your_migration_name`
-- [ ] **Bước 6:** Kiểm tra kết quả: `npx prisma studio`
+Trước khi push, đảm bảo:
+
+- [ ] ✅ File `.env` đã được tạo và có `DATABASE_URL` đúng
+- [ ] ✅ MySQL server đang chạy
+- [ ] ✅ Có thể kết nối đến database
+- [ ] ✅ Schema đã được validate (`npx prisma validate`)
+- [ ] ✅ Đã backup database (nếu có dữ liệu quan trọng)
+- [ ] ✅ Đã đọc kỹ các thay đổi sẽ được áp dụng
 
 ---
 
-## 🚀 LỆNH NHANH (QUICK REFERENCE)
+## 🚀 LỆNH NHANH (TÓM TẮT)
 
 ```bash
 # 1. Validate schema
 npx prisma validate
 
-# 2. Generate Prisma Client
+# 2. Generate client
 npx prisma generate
 
-# 3. Push schema (dev)
+# 3. Push schema (Development)
 npx prisma db push
 
-# 4. Tạo migration (production)
-npx prisma migrate dev --name migration_name
+# HOẶC
 
-# 5. Xem database (GUI)
+# 3. Tạo migration (Production)
+npx prisma migrate dev --name sync_schema_with_frontend
+
+# 4. Mở Prisma Studio để kiểm tra
 npx prisma studio
-
-# 6. Pull schema từ DB về file
-npx prisma db pull
-
-# 7. Reset database (⚠️ XÓA TẤT CẢ DỮ LIỆU)
-npx prisma migrate reset
 ```
 
 ---
 
 ## 💡 LƯU Ý QUAN TRỌNG
 
-1. **Backup database trước khi push** (đặc biệt production)
-2. **Không dùng `db push` cho production** - dùng `migrate` thay thế
-3. **Kiểm tra schema kỹ trước khi push** - một số thay đổi không thể rollback
-4. **File `.env` không commit lên Git** - thêm vào `.gitignore`
-5. **Nếu có dữ liệu quan trọng**, nên export trước:
+1. **`db push`** vs **`migrate`**:
+   - `db push`: Nhanh, không tạo migration history → Dùng cho **development**
+   - `migrate`: Tạo migration files → Dùng cho **production**
+
+2. **Backup trước khi push:**
    ```bash
-   mysqldump -u username -p database_name > backup.sql
+   # Export database
+   mysqldump -u root -p DATABASE_NAME > backup.sql
    ```
+
+3. **Không xóa dữ liệu:**
+   - `db push` chỉ **thêm/sửa**, không xóa dữ liệu
+   - Nếu muốn reset hoàn toàn: `npx prisma migrate reset` (⚠️ XÓA TẤT CẢ)
+
+4. **Schema location:**
+   - Prisma sẽ đọc từ `prisma/schema.prisma` (không phải `schema.prisma` ở root)
 
 ---
 
-## 📞 HỖ TRỢ
+## 🎉 HOÀN TẤT!
 
-Nếu gặp lỗi, hãy:
-1. Chạy `npx prisma validate` để kiểm tra schema
-2. Kiểm tra logs chi tiết với `--verbose`:
-   ```bash
-   npx prisma db push --verbose
-   ```
-3. Xem tài liệu: https://www.prisma.io/docs
+Sau khi push thành công, bạn có thể:
+- ✅ Sử dụng Prisma Client trong code
+- ✅ Chạy server và test API
+- ✅ Xem dữ liệu bằng Prisma Studio
 
----
-
-**Chúc bạn thành công! 🎉**
-
+**Chúc bạn thành công! 🚀**
