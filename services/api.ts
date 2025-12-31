@@ -182,9 +182,6 @@ export const api = {
     // ==================================================
     // 6. SALARY CALCULATION & ADJUSTMENTS
     // ==================================================
-    async calculateMonthlySalary(month: string) {
-        return await request(`/salary-records/calculate?month=${month}`, { method: 'POST' });
-    },
     async updateSalaryStatus(id: string, status: RecordStatus, rejectionReason?: string) {
         return await request(`/salary-records/${id}/status`, { 
             method: 'PUT', 
