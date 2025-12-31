@@ -135,7 +135,7 @@ model SalaryFormula {
   area        String   // OFFICE, FACTORY, ALL
   
   // [QUAN TRỌNG] Trường này bắt buộc phải có để map kết quả vào bảng lương
-  targetField String   // VD: actualBaseSalary, netSalary
+  targetField String?  @default("") // VD: actualBaseSalary, netSalary - Cho phép null để tương thích với DB cũ
   
   expression  String   @db.Text // VD: ({LCB_dm} / {Ctc}) * {Ctt}
   description String?  @db.Text
@@ -253,7 +253,7 @@ model EvaluationRequest {
   userId          String
   user            User         @relation(fields: [userId], references: [id])
   
-  userName        String?      // [FIX] Thêm để hiển thị nhanh bên frontend
+  // userName không lưu trong DB - được map từ user.name trong server.ts
   criteriaId      String
   criteriaName    String
   
