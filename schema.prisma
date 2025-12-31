@@ -1,0 +1,184 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  // "native" để chạy trên máy local của bạn
+  // "debian-openssl-3.0.x" là chuẩn cho node:20 (Debian Bookworm)
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// --- ENUMS (Đảm bảo tính nhất quán dữ liệu) ---
+
+enum UserRole {
+  ADMIN
+  BAN_LANH_DAO
+  GIAM_DOC_KHOI
+  QUAN_LY
+  KE_TOAN_LUONG
+  NHAN_SU
+  NHAN_VIEN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  MATERNITY
+  PROBATION
+  PENDING_APPROVAL
+}
+
+enum RecordStatus {
+  DRAFT
+  PENDING
+  PENDING_MANAGER
+  PENDING_GDK
+  PENDING_BLD
+  PENDING_HR
+  APPROVED
+  REJECTED
+}
+
+enum AttendanceType {
+  TIME
+  PIECEWORK
+  DAILY
+  MODE
+  HOLIDAY
+  PAID_LEAVE
+  UNPAID
+  WAITING
+}
+
+// --- MODELS ---
+
+model Department {
+  id              String   @id @default(cuid())
+  name            String
+  budgetNorm      Decimal  @default(0) @db.Decimal(18, 2)
+  managerId       String?
+  blockDirectorId String?
+  hrId            String?
+  users           User[]   @relation("UserDepartment")
+  
+  @@map("departments")
+}
+
+model User {
+  id                   String               @id
+  username             String               @unique
+  password             String
+  name                 String
+  avatar               String?              @db.Text
+  email                String?
+  phone                String?
+  joinDate             DateTime             @default(now())
+  status               UserStatus           @default(ACTIVE)
+  roles                Json                 // Lưu mảng [UserRole]
+  numberOfDependents   Int                  @default(0)
+  currentDeptId        String?
+  department           Department?          @relation("UserDepartment", fields: [currentDeptId], references: [id])
+  currentPosition      String?
+  paymentType          String               @default("TIME") // TIME | PIECEWORK
+  efficiencySalary     Decimal              @default(0) @db.Decimal(18, 2)
+  pieceworkUnitPrice   Decimal              @default(0) @db.Decimal(18, 2)
+  reservedBonusAmount  Decimal              @default(0) @db.Decimal(18, 2)
+  probationRate        Int                  @default(100)
+  
+  attendanceRecords    AttendanceRecord[]
+  evaluationRequests   EvaluationRequest[]
+  salaryRecords        SalaryRecord[]
+  
+  @@index([username])
+  @@index([currentDeptId])
+  @@map("users")
+}
+
+model AttendanceRecord {
+  id                      String         @id
+  userId                  String
+  user                    User           @relation(fields: [userId], references: [id])
+  date                    DateTime       @db.Date
+  type                    AttendanceType @default(TIME)
+  hours                   Float          @default(8)
+  overtimeHours           Float          @default(0)
+  otRate                  Float          @default(1.5)
+  isOvertimeWithOutput    Boolean        @default(false)
+  output                  Float?
+  pieceworkUnitPrice      Decimal?       @db.Decimal(18, 2)
+  status                  RecordStatus   @default(DRAFT)
+  notes                   String?        @db.Text
+  sentToHrAt              DateTime?
+  rejectionReason         String?        @db.Text
+
+  // Khóa tổ hợp: Một nhân viên chỉ có 1 bản ghi công duy nhất mỗi ngày
+  @@unique([userId, date])
+  @@index([date])
+  @@index([status])
+  @@map("attendance_records")
+}
+
+model EvaluationRequest {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id])
+  criteriaId      String
+  criteriaName    String
+  type            String       // BONUS | PENALTY
+  target          String       @default("MONTHLY_SALARY") // MONTHLY_SALARY | RESERVED_BONUS
+  points          Float
+  description     String?      @db.Text
+  proofFileName   String?
+  requesterId     String
+  status          RecordStatus @default(PENDING)
+  createdAt       DateTime     @default(now())
+  rejectionReason String?      @db.Text
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("evaluation_requests")
+}
+
+model SalaryRecord {
+  id                    String       @id
+  userId                String
+  user                  User         @relation(fields: [userId], references: [id])
+  date                  String       // YYYY-MM
+  status                RecordStatus @default(DRAFT)
+  
+  // Các chỉ số snapshot lúc tính lương
+  actualBaseSalary      Decimal      @db.Decimal(18, 2)
+  actualEfficiencySalary Decimal     @db.Decimal(18, 2)
+  actualPieceworkSalary Decimal      @db.Decimal(18, 2)
+  totalAllowance        Decimal      @db.Decimal(18, 2)
+  totalBonus            Decimal      @db.Decimal(18, 2)
+  insuranceDeduction    Decimal      @db.Decimal(18, 2)
+  pitDeduction          Decimal      @db.Decimal(18, 2)
+  advancePayment        Decimal      @db.Decimal(18, 2)
+  netSalary             Decimal      @db.Decimal(18, 2)
+  
+  calculationLog        Json?        // Lưu chi tiết công thức đã áp dụng
+  lastUpdated           DateTime     @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+  @@map("salary_records")
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  action         String
+  actor          String
+  timestamp      DateTime @default(now())
+  details        String   @db.Text
+  isConfigAction Boolean  @default(false)
+
+  @@index([timestamp])
+  @@map("audit_logs")
+}
