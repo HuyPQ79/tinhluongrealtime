@@ -10,10 +10,6 @@ import jwt from 'jsonwebtoken';
 // --- IMPORT SEEDER ---
 import { seedDatabase } from './seeder';
 
-// ESM compatibility: __dirname / __filename
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 // --- ERROR TRAP ---
 process.on('uncaughtException', (err) => { console.error('🔥 CRITICAL:', err); });
 process.on('unhandledRejection', (reason) => { console.error('🔥 PROMISE:', reason); });
