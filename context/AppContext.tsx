@@ -420,8 +420,19 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
 
   // --- LOGS & NOTIFICATIONS ---
   const addAuditLog = async (action: string, details: string) => {
-      const log: AuditLog = { id: `LOG${Date.now()}`, action, actor: currentUser?.name || 'System', timestamp: new Date().toISOString(), details };
-      // await api.saveLog(log); // Uncomment nếu muốn lưu log lên server
+      const log: AuditLog = { 
+        id: `LOG${Date.now()}`, 
+        action, 
+        actor: currentUser?.name || 'System', 
+        timestamp: new Date().toISOString(), 
+        details,
+        isConfigAction: action.includes('CONFIG') || action.includes('FORMULA') || action.includes('VARIABLE')
+      };
+      try {
+        await api.saveLog(log);
+      } catch (e) {
+        console.error("Error saving audit log:", e);
+      }
       setAuditLogs(prev => [log, ...prev]);
   };
 

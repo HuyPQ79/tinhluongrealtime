@@ -76,7 +76,12 @@ const authenticateToken = async (req: AuthRequest, res: express.Response, next: 
             assignedDeptIds = userData.assignedDeptIds;
           }
         } catch (e) {}
-        req.currentUser = { ...userData, assignedDeptIds };
+        // Đảm bảo currentDeptId được include
+        req.currentUser = { 
+          ...userData, 
+          assignedDeptIds,
+          currentDeptId: userData.currentDeptId || null
+        };
       }
     } catch (err) {
       // Token không hợp lệ - bỏ qua, không set currentUser
@@ -410,6 +415,21 @@ app.post('/api/users', async (req, res) => {
       create: cleanData
     });
     
+    // Ghi audit log
+    try {
+      const actor = req.currentUser?.name || 'System';
+      await prisma.auditLog.create({
+        data: {
+          action: raw.id ? 'UPDATE_USER' : 'CREATE_USER',
+          actor,
+          details: `User ${raw.id ? 'cập nhật' : 'tạo mới'}: ${user.name} (${user.username})`,
+          isConfigAction: false
+        }
+      });
+    } catch (logError) {
+      console.error("Error saving audit log:", logError);
+    }
+    
     res.json(user);
   } catch (e: any) { 
       console.error("USER ERROR:", e);
@@ -549,11 +569,16 @@ app.get('/api/users', async (req: AuthRequest, res) => {
         // Filter theo assignedDeptIds cho KE_TOAN_LUONG
         if (req.currentUser?.roles?.includes('KE_TOAN_LUONG')) {
             const assignedDeptIds = req.currentUser.assignedDeptIds || [];
-            if (assignedDeptIds.length > 0) {
+            // Nếu không có assignedDeptIds, fallback về currentDeptId của chính user đó
+            const deptIds = assignedDeptIds.length > 0 
+                ? assignedDeptIds 
+                : (req.currentUser.currentDeptId ? [req.currentUser.currentDeptId] : []);
+            
+            if (deptIds.length > 0) {
                 where = {
                     OR: [
-                        { currentDeptId: { in: assignedDeptIds } },
-                        { sideDeptId: { in: assignedDeptIds } }
+                        { currentDeptId: { in: deptIds } },
+                        { sideDeptId: { in: deptIds } }
                     ]
                 };
             } else {
@@ -638,12 +663,17 @@ app.get('/api/attendance', async (req: AuthRequest, res) => {
         // Filter theo assignedDeptIds cho KE_TOAN_LUONG
         if (req.currentUser?.roles?.includes('KE_TOAN_LUONG')) {
             const assignedDeptIds = req.currentUser.assignedDeptIds || [];
-            if (assignedDeptIds.length > 0) {
+            // Nếu không có assignedDeptIds, fallback về currentDeptId của chính user đó
+            const deptIds = assignedDeptIds.length > 0 
+                ? assignedDeptIds 
+                : (req.currentUser.currentDeptId ? [req.currentUser.currentDeptId] : []);
+            
+            if (deptIds.length > 0) {
                 const users = await prisma.user.findMany({
                     where: {
                         OR: [
-                            { currentDeptId: { in: assignedDeptIds } },
-                            { sideDeptId: { in: assignedDeptIds } }
+                            { currentDeptId: { in: deptIds } },
+                            { sideDeptId: { in: deptIds } }
                         ]
                     },
                     select: { id: true }
@@ -733,12 +763,17 @@ app.get('/api/salary-records', async (req: AuthRequest, res) => {
     // Filter theo assignedDeptIds cho KE_TOAN_LUONG
     if (req.currentUser?.roles?.includes('KE_TOAN_LUONG')) {
       const assignedDeptIds = req.currentUser.assignedDeptIds || [];
-      if (assignedDeptIds.length > 0) {
+      // Nếu không có assignedDeptIds, fallback về currentDeptId của chính user đó
+      const deptIds = assignedDeptIds.length > 0 
+          ? assignedDeptIds 
+          : (req.currentUser.currentDeptId ? [req.currentUser.currentDeptId] : []);
+      
+      if (deptIds.length > 0) {
         const users = await prisma.user.findMany({
           where: {
             OR: [
-              { currentDeptId: { in: assignedDeptIds } },
-              { sideDeptId: { in: assignedDeptIds } }
+              { currentDeptId: { in: deptIds } },
+              { sideDeptId: { in: deptIds } }
             ]
           },
           select: { id: true }

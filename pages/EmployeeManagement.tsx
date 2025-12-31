@@ -127,7 +127,8 @@ const EmployeeManagement: React.FC = () => {
     e.preventDefault();
     if (!editingUser) return;
 
-    if (editingUser.password !== confirmPassword) {
+    // Chỉ kiểm tra password khi là user mới hoặc khi password đã được nhập
+    if ((isNew || editingUser.password) && editingUser.password !== confirmPassword) {
         showToast("Mật khẩu xác nhận không khớp!", "ERROR");
         setUserTabInModal('ACCOUNT');
         return;
@@ -782,8 +783,8 @@ const EmployeeManagement: React.FC = () => {
               <button type="button" onClick={() => setIsUserModalOpen(false)} className="px-8 py-3 bg-white border-2 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">Hủy</button>
               <button 
                 type="submit" 
-                className={`px-12 py-3 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl hover:bg-indigo-700 active:scale-95 transition-all ${editingUser.password !== confirmPassword ? 'opacity-50 cursor-not-allowed' : ''}`}
-                disabled={editingUser.password !== confirmPassword}
+                className={`px-12 py-3 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl hover:bg-indigo-700 active:scale-95 transition-all ${(isNew || editingUser.password) && editingUser.password !== confirmPassword ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={(isNew || editingUser.password) && editingUser.password !== confirmPassword}
               >
                   {isNew ? 'Thêm Nhân Viên' : (isAdmin ? 'Lưu Thay Đổi' : 'Gửi Đề Xuất Cập Nhật')}
               </button>
