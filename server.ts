@@ -53,7 +53,16 @@ async function initDatabase() {
         const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
         if (!config) {
             await prisma.systemConfig.create({
-                data: { id: "default_config", baseSalary: 1800000, standardWorkDays: 26, insuranceBaseSalary: 1800000, maxInsuranceBase: 36000000 }
+                data: { 
+                    id: "default_config", 
+                    baseSalary: 1800000, 
+                    standardWorkDays: 26, 
+                    insuranceBaseSalary: 1800000, 
+                    maxInsuranceBase: 36000000,
+                    pitSteps: [],
+                    seniorityRules: [],
+                    insuranceRules: {}
+                }
             });
         }
         // Default Admin
@@ -298,8 +307,40 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/config/system', async (req, res) => {
   try {
     const cfg = await prisma.systemConfig.findUnique({ where: { id: 'default_config' } });
+    
+    // Nếu không có config, tạo mặc định
+    if (!cfg) {
+      return res.json({
+        id: 'default_config',
+        baseSalary: 1800000,
+        standardWorkDays: 26,
+        insuranceBaseSalary: 1800000,
+        maxInsuranceBase: 36000000,
+        pitSteps: [],
+        seniorityRules: [],
+        isPeriodLocked: false,
+        autoApproveDays: 3,
+        hrAutoApproveHours: 24,
+        approvalMode: 'POST_AUDIT',
+        personalRelief: 11000000,
+        dependentRelief: 4400000,
+        insuranceRate: 10.5,
+        unionFeeRate: 1,
+        approvalWorkflow: [],
+      });
+    }
+    
     // insuranceRules dùng như "extra" để giữ các field mở rộng của frontend
     const extra = (cfg?.insuranceRules as any) || {};
+    
+    // Xử lý an toàn cho seniorityRules (có thể chưa có trong DB cũ)
+    let seniorityRules = [];
+    try {
+      seniorityRules = (cfg as any).seniorityRules || extra.seniorityRules || [];
+    } catch (e) {
+      seniorityRules = extra.seniorityRules || [];
+    }
+    
     res.json({
       id: 'default_config',
       baseSalary: Number(cfg?.baseSalary || 0),
@@ -307,7 +348,7 @@ app.get('/api/config/system', async (req, res) => {
       insuranceBaseSalary: Number(cfg?.insuranceBaseSalary || 0),
       maxInsuranceBase: Number(cfg?.maxInsuranceBase || 0),
       pitSteps: (cfg?.pitSteps as any) || extra.pitSteps || [],
-      seniorityRules: (cfg?.seniorityRules as any) || extra.seniorityRules || [],
+      seniorityRules: seniorityRules,
       // Các field mở rộng (không có cột riêng trong DB)
       isPeriodLocked: extra.isPeriodLocked ?? false,
       autoApproveDays: extra.autoApproveDays ?? 3,
@@ -324,7 +365,8 @@ app.get('/api/config/system', async (req, res) => {
       pendingChangeSummary: extra.pendingChangeSummary,
     });
   } catch (e: any) {
-    res.status(500).json({ message: e.message || 'Lỗi đọc cấu hình' });
+    console.error("Error getting system config:", e);
+    res.status(500).json({ message: e.message || 'Lỗi đọc cấu hình', error: String(e) });
   }
 });
 
