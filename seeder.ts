@@ -67,6 +67,33 @@ const INITIAL_DAILY_WORK = [
 ];
 
 // --- HÀM SEED CHÍNH ---
+// --- SYSTEM CONFIG (default row) ---
+const INITIAL_SYSTEM_CONFIG = {
+  id: 'default_config',
+  baseSalary: 0,
+  standardWorkDays: 26,
+  insuranceBaseSalary: 0,
+  maxInsuranceBase: 0,
+  pitSteps: null,
+  insuranceRules: null,
+  seniorityRules: null,
+};
+
+// --- HOLIDAYS ---
+const INITIAL_HOLIDAYS = [
+  { date: '2026-01-01', name: 'Tết Dương Lịch', rate: 3.0 },
+];
+
+// --- BONUS TYPES ---
+const INITIAL_BONUS_TYPES = [
+  { code: 'BONUS_OTHER', name: 'Thưởng khác', isTaxable: true },
+];
+
+// --- ANNUAL BONUS POLICIES ---
+const INITIAL_ANNUAL_POLICIES = [
+  { name: 'Thưởng Tết (mẫu)', formulaCode: 'BONUS_OTHER', condition: null },
+];
+
 export const seedDatabase = async () => {
     console.log("--> [SEEDER] Bắt đầu nạp dữ liệu...");
 
@@ -105,6 +132,34 @@ export const seedDatabase = async () => {
         console.log("   - DailyWork: OK");
     } catch(e) { console.error("   x DailyWork Error:", e); }
 
-    console.log("--> [SEEDER] Hoàn tất!");
+    // 6. System Config
+    try {
+        await prisma.systemConfig.upsert({
+            where: { id: 'default_config' },
+            update: INITIAL_SYSTEM_CONFIG as any,
+            create: INITIAL_SYSTEM_CONFIG as any
+        });
+        console.log("   - SystemConfig: OK");
+    } catch(e) { console.error("   x SystemConfig Error:", e); }
+
+    // 7. Holidays
+    try {
+        for (const h of INITIAL_HOLIDAYS) await prisma.holiday.upsert({ where: { date: h.date }, update: h as any, create: h as any });
+        console.log("   - Holidays: OK");
+    } catch(e) { console.error("   x Holidays Error:", e); }
+
+    // 8. Bonus Types
+    try {
+        for (const b of INITIAL_BONUS_TYPES) await prisma.bonusType.upsert({ where: { code: b.code }, update: b as any, create: b as any });
+        console.log("   - BonusTypes: OK");
+    } catch(e) { console.error("   x BonusTypes Error:", e); }
+
+    // 9. Annual Bonus Policies
+    try {
+        for (const p of INITIAL_ANNUAL_POLICIES) await prisma.annualBonusPolicy.create({ data: p as any }).catch(() => {});
+        console.log("   - AnnualPolicies: OK");
+    } catch(e) { console.error("   x AnnualPolicies Error:", e); }
+
+console.log("--> [SEEDER] Hoàn tất!");
     return { success: true };
 };

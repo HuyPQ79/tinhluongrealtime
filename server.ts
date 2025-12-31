@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -9,215 +10,605 @@ import jwt from 'jsonwebtoken';
 // --- IMPORT SEEDER ---
 import { seedDatabase } from './seeder';
 
+// ESM compatibility: __dirname / __filename
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // --- ERROR TRAP ---
 process.on('uncaughtException', (err) => { console.error('🔥 CRITICAL:', err); });
-process.on('unhandledRejection', (reason, promise) => { console.error('🔥 PROMISE:', reason); });
+process.on('unhandledRejection', (reason) => { console.error('🔥 PROMISE:', reason); });
 
-console.log("=== SERVER RESTARTING (FIX JOINDATE + ALIAS ROUTES) ===");
+console.log("=== SERVER START (FULL API for services/api.ts) ===");
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '8080');
-const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 const prisma = new PrismaClient();
 
-// === DB INIT ===
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+
+// --- INIT DB (best-effort) ---
 async function initDatabase() {
-    try {
-        await prisma.$queryRaw`SELECT 1`;
-        console.log("--> DB Connected.");
-        
-        // Default Config
-        const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
-        if (!config) {
-            await prisma.systemConfig.create({
-                data: { id: "default_config", baseSalary: 1800000, standardWorkDays: 26, insuranceBaseSalary: 1800000, maxInsuranceBase: 36000000 }
-            });
-        }
-        // Default Admin
-        const userCount = await prisma.user.count();
-        if (userCount === 0) {
-            const salt = await bcrypt.genSalt(10);
-            await prisma.user.create({
-                data: { id: "admin_01", username: "admin", password: await bcrypt.hash("123", salt), name: "Quản Trị Hệ Thống", roles: ["ADMIN"], status: "ACTIVE" }
-            });
-        }
-    } catch (e) { console.error("DB Init Error:", e); }
+  try {
+    await prisma.$connect();
+    console.log("✅ Prisma connected");
+  } catch (e) {
+    console.error("DB Init Error:", e);
+  }
 }
 initDatabase();
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Middleware log request
-app.use((req, res, next) => {
-    console.log(`[REQ] ${req.method} ${req.url}`);
-    next();
+// --- REQUEST LOGGER ---
+app.use((req, _res, next) => {
+  console.log(`[REQ] ${req.method} ${req.url}`);
+  next();
 });
 
-// --- HELPER: TẠO API VỚI NHIỀU TÊN GỌI KHÁC NHAU ---
-// Frontend gọi api/formulas hay api/salary-formulas đều được
-const createCrud = (modelName: string, routes: string[]) => {
-    // @ts-ignore
-    const model = prisma[modelName];
-    routes.forEach(route => {
-        app.get(`/api/${route}`, async (req, res) => {
-            try { const items = await model.findMany(); res.json(items); } 
-            catch(e: any) { res.status(500).json({ error: e.message }); }
-        });
-        app.post(`/api/${route}`, async (req, res) => {
-            try {
-                const data = req.body;
-                const item = await model.upsert({
-                    where: { id: data.id || "new_" }, 
-                    update: data, 
-                    create: { ...data, id: data.id || `rec_${Date.now()}` }
-                });
-                res.json(item);
-            } catch(e: any) { res.status(500).json({ error: e.message }); }
-        });
-        app.delete(`/api/${route}/:id`, async (req, res) => {
-            try { await model.delete({ where: { id: req.params.id } }); res.json({ success: true }); } 
-            catch(e: any) { res.status(500).json({ error: e.message }); }
-        });
-    });
-};
+// --- HELPERS ---
+function ok(res: express.Response, data: any) { return res.json(data); }
+function fail(res: express.Response, status: number, message: string, detail?: any) {
+  if (detail) console.error("❌ API ERROR:", message, detail);
+  return res.status(status).json({ message, detail });
+}
 
-// ==========================================
-// API CONFIG (MỞ RỘNG ROUTE ĐỂ FRONTEND KHÔNG BỊ 404)
-// ==========================================
-createCrud('salaryFormula', ['formulas', 'salary-formulas']); 
-createCrud('salaryVariable', ['variables', 'salary-variables']);
-createCrud('criterionGroup', ['criteria/groups', 'criterion-groups']);
-createCrud('criterion', ['criteria/items', 'criteria', 'criterions']); 
-createCrud('department', ['departments']);
-createCrud('salaryRank', ['ranks', 'salary-ranks']);
-createCrud('dailyWorkItem', ['daily-work-items', 'daily-works']);
-createCrud('pieceworkConfig', ['piecework-configs']);
-createCrud('holiday', ['holidays']);
-createCrud('auditLog', ['audit', 'audit-logs']);
+function isISODate(s: string) { return /^\d{4}-\d{2}-\d{2}$/.test(s); }
+function isISOMonth(s: string) { return /^\d{4}-\d{2}$/.test(s); }
 
-// ==========================================
-// API USER (FIX LỖI JOINDATE & 500 ERROR)
-// ==========================================
-app.post('/api/users', async (req, res) => {
+/**
+ * Normalize various date inputs to Date object for Prisma DateTime.
+ * Accepts:
+ * - ISO DateTime string
+ * - "YYYY-MM-DD" (assumes 00:00:00Z)
+ * - number (timestamp)
+ * - Date
+ */
+function normalizeDateTime(input: any): Date | undefined {
+  if (input === null || input === undefined || input === '') return undefined;
+  if (input instanceof Date) return input;
+  if (typeof input === 'number') {
+    const d = new Date(input);
+    return isNaN(d.getTime()) ? undefined : d;
+  }
+  if (typeof input === 'string') {
+    const s = input.trim();
+    if (!s) return undefined;
+    // YYYY-MM-DD -> convert to ISO
+    if (isISODate(s)) return new Date(`${s}T00:00:00.000Z`);
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? undefined : d;
+  }
+  return undefined;
+}
+
+/**
+ * Remove undefined fields (so Prisma can use defaults and avoid validation errors)
+ */
+function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
+  const out: any = {};
+  for (const k of Object.keys(obj)) {
+    if (obj[k] !== undefined) out[k] = obj[k];
+  }
+  return out;
+}
+
+/**
+ * Auth: optional (frontend may or may not send token).
+ * If token exists and invalid -> 401. If missing -> allow (for easier testing).
+ */
+function optionalAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const auth = req.headers.authorization;
+  if (!auth) return next();
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return next();
   try {
-    const raw = req.body;
-    console.log("--> User Data Raw:", JSON.stringify(raw));
+    // @ts-ignore
+    req.user = jwt.verify(token, JWT_SECRET);
+    return next();
+  } catch (e) {
+    return fail(res, 401, "Token không hợp lệ");
+  }
+}
 
-    // 1. CHUẨN HÓA DỮ LIỆU (Tránh lỗi thừa trường)
-    const cleanData: any = {
-        id: raw.id || "user_" + Date.now(),
-        username: raw.username,
-        name: raw.name,
-        email: raw.email || null,
-        phone: raw.phone || null,
-        status: raw.status || "ACTIVE",
-        roles: (raw.roles && raw.roles.length > 0) ? raw.roles : ["NHAN_VIEN"],
-        paymentType: raw.paymentType || "TIME",
-        efficiencySalary: raw.efficiencySalary || 0,
-        pieceworkUnitPrice: raw.pieceworkUnitPrice || 0,
-        reservedBonusAmount: raw.reservedBonusAmount || 0,
-        probationRate: raw.probationRate || 100,
-        numberOfDependents: raw.numberOfDependents || 0,
-        // Map departmentId -> currentDeptId
-        currentDeptId: raw.currentDeptId || raw.departmentId || null
-    };
+app.use('/api', optionalAuth);
 
-    // 2. FIX LỖI DATE (THỦ PHẠM CHÍNH)
-    // Nếu joinDate rỗng hoặc null, lấy ngày hiện tại. Nếu có, ép kiểu về ISO.
-    try {
-        if (raw.joinDate && raw.joinDate !== "") {
-            cleanData.joinDate = new Date(raw.joinDate).toISOString();
-        } else {
-            cleanData.joinDate = new Date().toISOString();
-        }
-    } catch (err) {
-        console.error("Lỗi Date Parser, dùng ngày mặc định");
-        cleanData.joinDate = new Date().toISOString();
-    }
+// ==================================================
+// 0. HEALTH
+// ==================================================
+app.get('/api/ping', (_req, res) => ok(res, { ok: true, ts: new Date().toISOString() }));
 
-    // 3. Xử lý Password
-    if (raw.password && raw.password.trim() !== "") {
-        const salt = await bcrypt.genSalt(10);
-        cleanData.password = await bcrypt.hash(raw.password, salt);
-    } else if (!raw.id) {
-        // Tạo mới bắt buộc có pass
-        const salt = await bcrypt.genSalt(10);
-        cleanData.password = await bcrypt.hash("123", salt);
-    }
+// ==================================================
+// 1. AUTHENTICATION
+// ==================================================
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!username || !password) return fail(res, 400, "Thiếu username/password");
 
-    if (cleanData.currentDeptId === "") cleanData.currentDeptId = null;
+    const user = await prisma.user.findUnique({ where: { username } });
+    if (!user) return fail(res, 401, "Sai tài khoản");
 
-    console.log("--> User Data Clean:", JSON.stringify(cleanData));
+    const isHashed = typeof user.password === 'string' && user.password.startsWith('$2');
+    const okPass = isHashed ? await bcrypt.compare(password, user.password) : password === user.password;
+    if (!okPass) return fail(res, 401, "Sai mật khẩu");
 
-    const user = await prisma.user.upsert({
-      where: { id: cleanData.id },
-      update: cleanData,
-      create: cleanData
-    });
-    
-    res.json(user);
-  } catch (e: any) { 
-      console.error("USER ERROR:", e);
-      res.status(500).json({ error: "Lỗi lưu User: " + e.message }); 
+    // @ts-ignore
+    const token = jwt.sign({ id: user.id, roles: user.roles }, JWT_SECRET);
+    // remove password
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: _pw, ...userData } = user as any;
+    return ok(res, { success: true, token, user: userData });
+  } catch (e) {
+    return fail(res, 500, "Lỗi Server", e);
   }
 });
 
-app.post('/api/login', async (req, res) => {
-    try {
-      const { username, password } = req.body;
-      const user = await prisma.user.findUnique({ where: { username } });
-      if (!user) return res.status(401).json({ success: false, message: 'Sai tài khoản' });
-      const isMatch = user.password.startsWith('$2') ? await bcrypt.compare(password, user.password) : password === user.password;
-      if (isMatch) {
-        // @ts-ignore
-        const token = jwt.sign({ id: user.id, roles: user.roles }, JWT_SECRET);
-        const { password: _, ...userData } = user;
-        res.json({ success: true, token, user: userData });
-      } else { res.status(401).json({ success: false, message: 'Sai mật khẩu' }); }
-    } catch (error) { res.status(500).json({ success: false, message: 'Lỗi Server' }); }
+// ==================================================
+// 2. USERS & DEPARTMENTS
+// ==================================================
+app.get('/api/users', async (_req, res) => {
+  try {
+    const users = await prisma.user.findMany({ orderBy: { fullName: 'asc' } });
+    const safe = users.map((u: any) => { const { password, ...rest } = u; return rest; });
+    return ok(res, safe);
+  } catch (e) {
+    return fail(res, 500, "Không tải được users", e);
+  }
 });
 
-app.get('/api/users', async (req, res) => {
-    try {
-        const users = await prisma.user.findMany({ include: { department: true } });
-        // @ts-ignore
-        res.json(users.map(({ password, ...u }) => u));
-    } catch (e) { res.status(500).json({error: "Lỗi lấy users"}); }
+app.post('/api/users', async (req, res) => {
+  try {
+    const body = req.body || {};
+
+    // Fix joinDate: accept YYYY-MM-DD or ISO or empty
+    const joinDate = normalizeDateTime(body.joinDate);
+
+    // Password: if provided and not hashed -> hash
+    let password = body.password;
+    if (password && typeof password === 'string' && !password.startsWith('$2')) {
+      // hash only when creating/updating explicitly
+      password = await bcrypt.hash(password, 10);
+    }
+
+    const data = stripUndefined({
+      ...body,
+      joinDate,
+      password,
+    });
+
+    // Ensure we don't accidentally set empty joinDate
+    if (!joinDate) delete (data as any).joinDate;
+
+    const createdOrUpdated = body.id
+      ? await prisma.user.update({ where: { id: body.id }, data })
+      : await prisma.user.create({ data });
+
+    const { password: _pw, ...safe } = createdOrUpdated as any;
+    return ok(res, safe);
+  } catch (e: any) {
+    return fail(res, 500, "Lỗi lưu user", e);
+  }
 });
 
 app.delete('/api/users/:id', async (req, res) => {
-    try { await prisma.user.delete({ where: { id: req.params.id } }); res.json({ success: true }); }
-    catch (e) { res.status(500).json({ error: "Lỗi xóa User" }); }
+  try {
+    const id = req.params.id;
+    await prisma.user.delete({ where: { id } });
+    return ok(res, { success: true });
+  } catch (e) {
+    return fail(res, 500, "Không xoá được user", e);
+  }
 });
 
+app.get('/api/departments', async (_req, res) => {
+  try {
+    const depts = await prisma.department.findMany({ orderBy: { name: 'asc' } });
+    return ok(res, depts);
+  } catch (e) {
+    return fail(res, 500, "Không tải được phòng ban", e);
+  }
+});
+
+app.post('/api/departments', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = stripUndefined({ ...body });
+
+    const dept = body.id
+      ? await prisma.department.upsert({
+          where: { id: body.id },
+          create: data as any,
+          update: data as any,
+        })
+      : await prisma.department.create({ data: data as any });
+
+    return ok(res, dept);
+  } catch (e) {
+    return fail(res, 500, "Lỗi lưu phòng ban", e);
+  }
+});
+
+app.delete('/api/departments/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    await prisma.department.delete({ where: { id } });
+    return ok(res, { success: true });
+  } catch (e) {
+    return fail(res, 500, "Không xoá được phòng ban", e);
+  }
+});
+
+// ==================================================
+// 3. ATTENDANCE & SALARY
+// ==================================================
 app.get('/api/attendance', async (req, res) => {
-    try { const { month } = req.query; const records = await prisma.attendanceRecord.findMany({ where: month ? { date: { startsWith: month as string } } : {} }); res.json(records); } 
-    catch(e: any) { res.status(500).json({ error: e.message }); }
+  try {
+    const month = (req.query.month as string | undefined) || undefined;
+    const where: any = {};
+    if (month) {
+      if (!isISOMonth(month)) return fail(res, 400, "month phải có dạng YYYY-MM");
+      where.date = { startsWith: month }; // AttendanceRecord.date: "YYYY-MM-DD"
+    }
+    const rows = await prisma.attendanceRecord.findMany({ where, orderBy: [{ date: 'asc' }] });
+    return ok(res, rows);
+  } catch (e) {
+    return fail(res, 500, "Không tải được chấm công", e);
+  }
 });
+
+/**
+ * Save attendance: accepts single record or array.
+ * Upsert by unique (userId, date)
+ */
 app.post('/api/attendance', async (req, res) => {
-    try {
-        const data = req.body; const records = Array.isArray(data) ? data : [data]; const results = [];
-        for (const rec of records) results.push(await prisma.attendanceRecord.upsert({ where: { userId_date: { userId: rec.userId, date: rec.date } }, update: rec, create: rec }));
-        res.json({ success: true, count: results.length });
-    } catch(e: any) { res.status(500).json({ error: e.message }); }
+  try {
+    const payload = req.body;
+    const items = Array.isArray(payload) ? payload : [payload];
+
+    const results = [];
+    for (const it of items) {
+      if (!it?.userId || !it?.date) return fail(res, 400, "Thiếu userId/date cho attendance");
+      if (!isISODate(it.date)) return fail(res, 400, "attendance.date phải có dạng YYYY-MM-DD");
+
+      const data = stripUndefined({ ...it });
+      // Use composite unique: userId_date
+      const saved = await prisma.attendanceRecord.upsert({
+        where: { userId_date: { userId: it.userId, date: it.date } },
+        create: data as any,
+        update: data as any,
+      });
+      results.push(saved);
+    }
+
+    return ok(res, Array.isArray(payload) ? results : results[0]);
+  } catch (e) {
+    return fail(res, 500, "Lỗi lưu chấm công", e);
+  }
 });
 
-// API Nạp dữ liệu
-app.get('/api/seed-data-secret', async (req, res) => {
-    try {
-        await seedDatabase();
-        res.json({ success: true, message: "OK" });
-    } catch (error: any) { res.status(500).json({ success: false, error: error.message }); }
+app.get('/api/salary-records', async (req, res) => {
+  try {
+    const month = (req.query.month as string | undefined) || undefined;
+    const where: any = {};
+    if (month) {
+      if (!isISOMonth(month)) return fail(res, 400, "month phải có dạng YYYY-MM");
+      where.date = month; // SalaryRecord.date: "YYYY-MM"
+    }
+    const rows = await prisma.salaryRecord.findMany({
+      where,
+      orderBy: [{ date: 'asc' }],
+    });
+    return ok(res, rows);
+  } catch (e) {
+    return fail(res, 500, "Không tải được bảng lương", e);
+  }
 });
 
-// Static
-app.get('/api/ping', (req, res) => { res.json({ status: "OK" }); });
-const distPath = path.join(process.cwd(), 'dist');
-if (fs.existsSync(distPath)) app.use(express.static(distPath));
-app.get('*', (req, res) => { 
-    if (fs.existsSync(path.join(distPath, 'index.html'))) res.sendFile(path.join(distPath, 'index.html'));
-    else res.send("Backend OK.");
+/**
+ * Save salary record: upsert by unique (userId, date)
+ */
+app.post('/api/salary-records', async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.userId || !body.date) return fail(res, 400, "Thiếu userId/date cho salary-record");
+    if (!isISOMonth(body.date)) return fail(res, 400, "salaryRecord.date phải có dạng YYYY-MM");
+
+    const data = stripUndefined({ ...body });
+    const saved = await prisma.salaryRecord.upsert({
+      where: { userId_date: { userId: body.userId, date: body.date } },
+      create: data as any,
+      update: data as any,
+    });
+    return ok(res, saved);
+  } catch (e) {
+    return fail(res, 500, "Lỗi lưu bảng lương", e);
+  }
 });
 
-app.listen(PORT, '0.0.0.0', () => { console.log(`Server running on ${PORT}`); });
+// ==================================================
+// 4. CONFIGURATION & MASTER DATA
+// (used by api.saveConfig in services/api.ts)
+// ==================================================
+app.get('/api/config/system', async (_req, res) => {
+  try {
+    const config = await prisma.systemConfig.findUnique({ where: { id: 'default_config' } });
+    if (!config) {
+      const created = await prisma.systemConfig.create({ data: { id: 'default_config' } as any });
+      return ok(res, created);
+    }
+    return ok(res, config);
+  } catch (e) {
+    return fail(res, 500, "Không tải được system config", e);
+  }
+});
+
+app.post('/api/config/system', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = stripUndefined({ ...body, id: 'default_config' });
+    const saved = await prisma.systemConfig.upsert({
+      where: { id: 'default_config' },
+      create: data as any,
+      update: data as any,
+    });
+    return ok(res, saved);
+  } catch (e) {
+    return fail(res, 500, "Lỗi lưu system config", e);
+  }
+});
+
+// --- FORMULAS ---
+app.get('/api/formulas', async (_req, res) => {
+  try {
+    const rows = await prisma.salaryFormula.findMany({ orderBy: [{ group: 'asc' }, { name: 'asc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được formulas", e); }
+});
+app.post('/api/formulas', async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.code) return fail(res, 400, "Formula thiếu code");
+    const data = stripUndefined({ ...body });
+    const saved = await prisma.salaryFormula.upsert({
+      where: { code: body.code },
+      create: data as any,
+      update: data as any,
+    });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu formula", e); }
+});
+
+// --- VARIABLES ---
+app.get('/api/variables', async (_req, res) => {
+  try {
+    const rows = await prisma.salaryVariable.findMany({ orderBy: [{ group: 'asc' }, { name: 'asc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được variables", e); }
+});
+app.post('/api/variables', async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.code) return fail(res, 400, "Variable thiếu code");
+    const data = stripUndefined({ ...body });
+    const saved = await prisma.salaryVariable.upsert({
+      where: { code: body.code },
+      create: data as any,
+      update: data as any,
+    });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu variable", e); }
+});
+
+// --- CRITERIA GROUPS ---
+app.get('/api/criteria/groups', async (_req, res) => {
+  try {
+    const rows = await prisma.criterionGroup.findMany({ orderBy: [{ name: 'asc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được criterion groups", e); }
+});
+app.post('/api/criteria/groups', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = stripUndefined({ ...body });
+    const saved = body.id
+      ? await prisma.criterionGroup.upsert({ where: { id: body.id }, create: data as any, update: data as any })
+      : await prisma.criterionGroup.create({ data: data as any });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu criterion group", e); }
+});
+
+// --- CRITERIA ITEMS ---
+app.get('/api/criteria/items', async (_req, res) => {
+  try {
+    const rows = await prisma.criterion.findMany({ orderBy: [{ name: 'asc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được criteria", e); }
+});
+app.post('/api/criteria/items', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = stripUndefined({ ...body });
+    const saved = body.id
+      ? await prisma.criterion.upsert({ where: { id: body.id }, create: data as any, update: data as any })
+      : await prisma.criterion.create({ data: data as any });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu criterion", e); }
+});
+
+// --- RANKS ---
+app.get('/api/ranks', async (_req, res) => {
+  try {
+    const rows = await prisma.salaryRank.findMany({ include: { grades: true }, orderBy: [{ name: 'asc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được ranks", e); }
+});
+app.post('/api/ranks', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = stripUndefined({ ...body });
+    const saved = body.id
+      ? await prisma.salaryRank.upsert({ where: { id: body.id }, create: data as any, update: data as any })
+      : await prisma.salaryRank.create({ data: data as any });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu rank", e); }
+});
+
+// --- PIECEWORK CONFIGS ---
+app.get('/api/piecework-configs', async (_req, res) => {
+  try {
+    const rows = await prisma.pieceworkConfig.findMany({ orderBy: [{ name: 'asc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được piecework-configs", e); }
+});
+app.post('/api/piecework-configs', async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.code) return fail(res, 400, "PieceworkConfig thiếu code");
+    const data = stripUndefined({ ...body });
+    const saved = await prisma.pieceworkConfig.upsert({
+      where: { code: body.code },
+      create: data as any,
+      update: data as any,
+    });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu piecework-config", e); }
+});
+
+// --- HOLIDAYS ---
+app.get('/api/holidays', async (_req, res) => {
+  try {
+    const rows = await prisma.holiday.findMany({ orderBy: [{ date: 'asc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được holidays", e); }
+});
+app.post('/api/holidays', async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.date || !isISODate(body.date)) return fail(res, 400, "Holiday.date phải có dạng YYYY-MM-DD");
+    const data = stripUndefined({ ...body });
+    const saved = await prisma.holiday.upsert({
+      where: { date: body.date },
+      create: data as any,
+      update: data as any,
+    });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu holiday", e); }
+});
+
+// --- BONUS TYPES ---
+app.get('/api/bonus-types', async (_req, res) => {
+  try {
+    const rows = await prisma.bonusType.findMany({ orderBy: [{ name: 'asc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được bonus-types", e); }
+});
+app.post('/api/bonus-types', async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.code) return fail(res, 400, "BonusType thiếu code");
+    const data = stripUndefined({ ...body });
+    const saved = await prisma.bonusType.upsert({
+      where: { code: body.code },
+      create: data as any,
+      update: data as any,
+    });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu bonus-type", e); }
+});
+
+// --- BONUS POLICIES ---
+app.get('/api/bonus-policies', async (_req, res) => {
+  try {
+    const rows = await prisma.annualBonusPolicy.findMany({ orderBy: [{ name: 'asc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được bonus-policies", e); }
+});
+app.post('/api/bonus-policies', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = stripUndefined({ ...body });
+    const saved = body.id
+      ? await prisma.annualBonusPolicy.upsert({ where: { id: body.id }, create: data as any, update: data as any })
+      : await prisma.annualBonusPolicy.create({ data: data as any });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu bonus-policy", e); }
+});
+
+// --- DAILY WORK ITEMS ---
+app.get('/api/daily-work-items', async (_req, res) => {
+  try {
+    const rows = await prisma.dailyWorkItem.findMany({ orderBy: [{ name: 'asc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được daily-work-items", e); }
+});
+app.post('/api/daily-work-items', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = stripUndefined({ ...body });
+    const saved = body.id
+      ? await prisma.dailyWorkItem.upsert({ where: { id: body.id }, create: data as any, update: data as any })
+      : await prisma.dailyWorkItem.create({ data: data as any });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu daily-work-item", e); }
+});
+
+// ==================================================
+// 5. OTHERS (Logs, Evaluations)
+// ==================================================
+app.get('/api/audit', async (_req, res) => {
+  try {
+    const rows = await prisma.auditLog.findMany({ orderBy: [{ createdAt: 'desc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được audit logs", e); }
+});
+app.post('/api/audit', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = stripUndefined({ ...body });
+    const saved = await prisma.auditLog.create({ data: data as any });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu audit log", e); }
+});
+
+app.get('/api/evaluations', async (_req, res) => {
+  try {
+    const rows = await prisma.evaluationRequest.findMany({ orderBy: [{ createdAt: 'desc' }] });
+    return ok(res, rows);
+  } catch (e) { return fail(res, 500, "Không tải được evaluations", e); }
+});
+app.post('/api/evaluations', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = stripUndefined({ ...body });
+    const saved = body.id
+      ? await prisma.evaluationRequest.upsert({ where: { id: body.id }, create: data as any, update: data as any })
+      : await prisma.evaluationRequest.create({ data: data as any });
+    return ok(res, saved);
+  } catch (e) { return fail(res, 500, "Lỗi lưu evaluation", e); }
+});
+
+// ==================================================
+// 6. SEED (DEV/TEST)
+// ==================================================
+app.get('/api/seed-data-secret', async (_req, res) => {
+  try {
+    await seedDatabase();
+    return ok(res, { success: true });
+  } catch (e) {
+    return fail(res, 500, "Seed thất bại", e);
+  }
+});
+
+// ==================================================
+// 7. SERVE FRONTEND (static build if exists)
+// ==================================================
+const distPath = path.join(__dirname, 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
+} else {
+  app.get('*', (_req, res) => ok(res, { ok: true, message: "Backend running. Build frontend to serve static." }));
+}
+
+app.listen(PORT, () => console.log(`🚀 Server listening on ${PORT}`));
