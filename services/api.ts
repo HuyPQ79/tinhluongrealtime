@@ -121,6 +121,9 @@ export const api = {
     async saveSalaryRecord(record: SalaryRecord) {
         return await request('/salary-records', { method: 'POST', body: JSON.stringify(record) });
     },
+    async calculateMonthlySalary(month: string) {
+        return await request(`/salary-records/calculate?month=${month}`, { method: 'POST' });
+    },
 
     // ==================================================
     // 4. CONFIGURATION & MASTER DATA

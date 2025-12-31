@@ -320,7 +320,7 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
 
   // --- ATTENDANCE ---
   const saveAttendance = async (records: AttendanceRecord[]) => {
-    await api.saveAttendance(records);
+    const result = await api.saveAttendance(records);
     setDailyAttendance(prev => {
         const next = [...prev];
         records.forEach(r => {
@@ -330,6 +330,17 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
         return next;
     });
     showToast("Đã lưu chấm công");
+    
+    // Tự động tính lại lương nếu có chấm công được phê duyệt
+    if (result.monthsToRecalculate && result.monthsToRecalculate.length > 0) {
+      for (const month of result.monthsToRecalculate) {
+        try {
+          await calculateMonthlySalary(month);
+        } catch (e) {
+          console.error(`Lỗi tính lương tự động cho tháng ${month}:`, e);
+        }
+      }
+    }
   };
 
   const updateAttendanceStatus = async (id: string, status: RecordStatus) => {
@@ -425,8 +436,21 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const getStandardWorkDays = (m: string) => systemConfig.standardWorkDays || 26;
   const canViewUser = (t: User) => true; // Logic quyền hạn có thể mở rộng sau
 
-  // --- PLACEHOLDERS (Giữ lại để tương thích UI cũ, sẽ nối API dần) ---
-  const calculateMonthlySalary = async (month: string) => { showToast("Tính năng đang được xử lý trên Server...", "INFO"); };
+  // --- SALARY CALCULATION ---
+  const calculateMonthlySalary = async (month: string) => {
+    try {
+      const result = await api.calculateMonthlySalary(month);
+      if (result.success) {
+        // Reload salary records sau khi tính
+        const records = await api.getSalaryRecords(month);
+        setSalaryRecords(records);
+        showToast(`Đã tính lương cho tháng ${month} (${result.count || 0} bản ghi)`, "SUCCESS");
+      }
+    } catch (e: any) {
+      console.error("Error calculating salary:", e);
+      showToast(e.message || "Lỗi tính lương", "ERROR");
+    }
+  };
   const updateSalaryStatus = (id: string, status: RecordStatus) => setSalaryRecords(p => p.map(r => r.id === id ? { ...r, status } : r));
   const canActionSalary = (record: SalaryRecord) => {
     if (!currentUser) return false;

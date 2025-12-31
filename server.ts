@@ -43,6 +43,52 @@ const PORT = parseInt(process.env.PORT || '8080');
 const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 const prisma = new PrismaClient();
 
+// === AUTHENTICATION MIDDLEWARE ===
+interface AuthRequest extends express.Request {
+  currentUser?: any;
+}
+
+const authenticateToken = async (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    
+    if (!token) {
+      // Không có token - cho phép truy cập nhưng không có currentUser
+      return next();
+    }
+    
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as { id: string; roles: string[] };
+      const user = await prisma.user.findUnique({ 
+        where: { id: decoded.id },
+        include: { department: true }
+      });
+      
+      if (user) {
+        const { password, ...userData } = user;
+        // Parse JSON fields
+        let assignedDeptIds = [];
+        try {
+          if (userData.assignedDeptIds && typeof userData.assignedDeptIds === 'string') {
+            assignedDeptIds = JSON.parse(userData.assignedDeptIds);
+          } else if (Array.isArray(userData.assignedDeptIds)) {
+            assignedDeptIds = userData.assignedDeptIds;
+          }
+        } catch (e) {}
+        req.currentUser = { ...userData, assignedDeptIds };
+      }
+    } catch (err) {
+      // Token không hợp lệ - bỏ qua, không set currentUser
+      console.warn("Invalid token:", err);
+    }
+    
+    next();
+  } catch (e) {
+    next();
+  }
+};
+
 // === DB INIT ===
 async function initDatabase() {
     try {
@@ -79,6 +125,9 @@ initDatabase();
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// Authentication middleware - lấy user từ JWT token
+app.use(authenticateToken);
 
 // Middleware log request
 app.use((req, res, next) => {
@@ -493,9 +542,30 @@ app.post('/api/config/system', async (req, res) => {
   }
 });
 
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', async (req: AuthRequest, res) => {
     try {
-        const users = await prisma.user.findMany({ include: { department: true } });
+        let where: any = {};
+        
+        // Filter theo assignedDeptIds cho KE_TOAN_LUONG
+        if (req.currentUser?.roles?.includes('KE_TOAN_LUONG')) {
+            const assignedDeptIds = req.currentUser.assignedDeptIds || [];
+            if (assignedDeptIds.length > 0) {
+                where = {
+                    OR: [
+                        { currentDeptId: { in: assignedDeptIds } },
+                        { sideDeptId: { in: assignedDeptIds } }
+                    ]
+                };
+            } else {
+                // Không có phòng ban được gán -> trả về rỗng
+                return res.json([]);
+            }
+        }
+        
+        const users = await prisma.user.findMany({ 
+            where,
+            include: { department: true } 
+        });
         // Map dữ liệu để khớp với types.ts
         const clean = users.map((u: any) => {
             const { password, ...rest } = u;
@@ -560,10 +630,32 @@ app.delete('/api/users/:id', async (req, res) => {
     catch (e) { res.status(500).json({ error: "Lỗi xóa User" }); }
 });
 
-app.get('/api/attendance', async (req, res) => {
+app.get('/api/attendance', async (req: AuthRequest, res) => {
     try { 
         const { month } = req.query; 
-        const where = month ? { date: { startsWith: month as string } } : {};
+        let where: any = month ? { date: { startsWith: month as string } } : {};
+        
+        // Filter theo assignedDeptIds cho KE_TOAN_LUONG
+        if (req.currentUser?.roles?.includes('KE_TOAN_LUONG')) {
+            const assignedDeptIds = req.currentUser.assignedDeptIds || [];
+            if (assignedDeptIds.length > 0) {
+                const users = await prisma.user.findMany({
+                    where: {
+                        OR: [
+                            { currentDeptId: { in: assignedDeptIds } },
+                            { sideDeptId: { in: assignedDeptIds } }
+                        ]
+                    },
+                    select: { id: true }
+                });
+                const userIds = users.map(u => u.id);
+                where.userId = { in: userIds };
+            } else {
+                // Không có phòng ban được gán -> trả về rỗng
+                return res.json([]);
+            }
+        }
+        
         const records = await prisma.attendanceRecord.findMany({ where });
         // Map dữ liệu để khớp với types.ts
         const clean = records.map((r: any) => ({
@@ -586,6 +678,8 @@ app.post('/api/attendance', async (req, res) => {
         const data = req.body; 
         const records = Array.isArray(data) ? data : [data]; 
         const results = [];
+        const monthsToRecalculate = new Set<string>();
+        
         for (const rec of records) {
             // Chuẩn hóa dữ liệu trước khi lưu
             const cleanRec: any = {
@@ -606,13 +700,21 @@ app.post('/api/attendance', async (req, res) => {
                 sentToHrAt: rec.sentToHrAt ? new Date(rec.sentToHrAt) : null,
                 rejectionReason: rec.rejectionReason || null,
             };
-            results.push(await prisma.attendanceRecord.upsert({ 
+            const saved = await prisma.attendanceRecord.upsert({ 
                 where: { userId_date: { userId: cleanRec.userId, date: cleanRec.date } }, 
                 update: cleanRec, 
                 create: cleanRec 
-            }));
+            });
+            results.push(saved);
+            
+            // Nếu status là APPROVED, thêm tháng vào danh sách cần tính lại lương
+            if (saved.status === 'APPROVED' && saved.date) {
+                const month = saved.date.substring(0, 7); // YYYY-MM
+                monthsToRecalculate.add(month);
+            }
         }
-        res.json({ success: true, count: results.length });
+        
+        res.json({ success: true, count: results.length, monthsToRecalculate: Array.from(monthsToRecalculate) });
     } catch(e: any) { 
         console.error("Error saving attendance:", e);
         res.status(500).json({ error: e.message }); 
@@ -623,10 +725,32 @@ app.post('/api/attendance', async (req, res) => {
 // SALARY RECORDS (đúng theo api.getSalaryRecords / saveSalaryRecord)
 // date: YYYY-MM, unique (userId,date)
 // ==========================================
-app.get('/api/salary-records', async (req, res) => {
+app.get('/api/salary-records', async (req: AuthRequest, res) => {
   try {
     const { month } = req.query;
-    const where = month ? { date: { startsWith: month as string } } : {};
+    let where: any = month ? { date: { startsWith: month as string } } : {};
+    
+    // Filter theo assignedDeptIds cho KE_TOAN_LUONG
+    if (req.currentUser?.roles?.includes('KE_TOAN_LUONG')) {
+      const assignedDeptIds = req.currentUser.assignedDeptIds || [];
+      if (assignedDeptIds.length > 0) {
+        const users = await prisma.user.findMany({
+          where: {
+            OR: [
+              { currentDeptId: { in: assignedDeptIds } },
+              { sideDeptId: { in: assignedDeptIds } }
+            ]
+          },
+          select: { id: true }
+        });
+        const userIds = users.map(u => u.id);
+        where.userId = { in: userIds };
+      } else {
+        // Không có phòng ban được gán -> trả về rỗng
+        return res.json([]);
+      }
+    }
+    
     const records = await prisma.salaryRecord.findMany({ 
       where, 
       include: { 
