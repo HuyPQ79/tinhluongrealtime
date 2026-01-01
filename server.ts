@@ -660,8 +660,38 @@ app.get('/api/users', async (req: AuthRequest, res) => {
 });
 
 app.delete('/api/users/:id', async (req, res) => {
-    try { await prisma.user.delete({ where: { id: req.params.id } }); res.json({ success: true }); }
-    catch (e) { res.status(500).json({ error: "Lỗi xóa User" }); }
+    try {
+        const userId = req.params.id;
+        
+        // Xóa cascade các bản ghi liên quan trước
+        await prisma.attendanceRecord.deleteMany({ where: { userId } });
+        await prisma.salaryRecord.deleteMany({ where: { userId } });
+        await prisma.evaluationRequest.deleteMany({ where: { userId } });
+        await prisma.pieceworkConfig.deleteMany({ where: { userId } });
+        
+        // Xóa user
+        await prisma.user.delete({ where: { id: userId } });
+        
+        // Ghi audit log
+        try {
+            const actor = req.currentUser?.name || 'System';
+            await prisma.auditLog.create({
+                data: {
+                    action: 'DELETE_USER',
+                    actor,
+                    details: `Xóa user: ${userId}`,
+                    isConfigAction: false
+                }
+            });
+        } catch (logError) {
+            console.error("Error saving audit log:", logError);
+        }
+        
+        res.json({ success: true });
+    } catch (e: any) {
+        console.error("Error deleting user:", e);
+        res.status(500).json({ error: e.message || "Lỗi xóa User" });
+    }
 });
 
 app.get('/api/attendance', async (req: AuthRequest, res) => {
