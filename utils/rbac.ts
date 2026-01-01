@@ -73,7 +73,7 @@ export const getNextPendingStatus = (beneficiary: User, workflow: ApprovalStep[]
  * Kiểm tra quyền phê duyệt bản ghi tại trạng thái hiện tại
  * Chấp nhận cả status string để dùng chung cho Attendance và Salary
  */
-export const canApproveStatus = (currentUser: User, status: RecordStatus, dept: Department | undefined, workflow: ApprovalStep[]): boolean => {
+export const canApproveStatus = (currentUser: User, status: RecordStatus, dept: Department | undefined, workflow: ApprovalStep[], allDepartments: Department[] = []): boolean => {
     if (hasRole(currentUser, [UserRole.ADMIN])) return true;
     if (!dept) return false;
 
@@ -83,16 +83,28 @@ export const canApproveStatus = (currentUser: User, status: RecordStatus, dept: 
     // Ràng buộc 1: Phải có đúng Role mà bước đó yêu cầu
     if (!currentUser.roles.includes(currentStep.role)) return false;
 
-    // Ràng buộc 2: Kiểm tra thẩm quyền theo Đơn vị (ngoại trừ BLD duyệt toàn cục)
+    // Ràng buộc 2: Kiểm tra thẩm quyền theo Đơn vị theo logic phân cấp mới
     switch (currentStep.role) {
         case UserRole.QUAN_LY:
+            // Quản lý phê duyệt cho toàn bộ nhân viên trong phòng ban mình phụ trách
             return dept.managerId === currentUser.id;
+            
         case UserRole.GIAM_DOC_KHOI:
-            return dept.blockDirectorId === currentUser.id;
+            // GDK phê duyệt cho toàn bộ Quản lý trong các phòng ban mình phụ trách
+            // Kiểm tra xem có phòng ban nào có blockDirectorId = currentUser.id không
+            const deptsUnderGDK = allDepartments.filter(d => d.blockDirectorId === currentUser.id);
+            return deptsUnderGDK.some(d => d.id === dept.id);
+            
         case UserRole.BAN_LANH_DAO:
+            // TGD phê duyệt cho các GDK (toàn cục)
             return true;
+            
         case UserRole.NHAN_SU:
-            return dept.hrId === currentUser.id || hasRole(currentUser, [UserRole.NHAN_SU]);
+            // Nhân sự hậu kiểm lại các phòng ban mình phụ trách
+            // Kiểm tra xem có phòng ban nào có hrId = currentUser.id không
+            const deptsUnderHR = allDepartments.filter(d => d.hrId === currentUser.id);
+            return deptsUnderHR.some(d => d.id === dept.id);
+            
         default:
             return false;
     }

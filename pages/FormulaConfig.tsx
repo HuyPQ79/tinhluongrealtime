@@ -235,40 +235,60 @@ const FormulaConfig: React.FC = () => {
                    </div>
                 </div>
 
+                <div className="flex justify-end mb-6">
+                    <button 
+                        onClick={addApprovalStep}
+                        className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-indigo-700 transition-all"
+                    >
+                        <Plus size={18}/> Thêm Bước Phê Duyệt
+                    </button>
+                </div>
+
                 <div className="space-y-6 text-left text-left">
-                    {systemConfig.approvalWorkflow.map((step, index) => (
-                        <div key={step.id} className="p-8 bg-slate-50 rounded-[40px] border border-slate-200 flex flex-col md:flex-row items-center gap-8 relative group transition-all hover:bg-white hover:border-indigo-200 text-left">
-                            <div className="w-14 h-14 bg-slate-900 text-white rounded-[24px] flex items-center justify-center font-black text-lg shrink-0 shadow-xl group-hover:bg-indigo-600 transition-all">#{index + 1}</div>
-                            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full text-left">
-                                <div className="text-left text-left">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-1 tracking-widest text-left">Tiêu đề bước</label>
-                                    <input className="w-full px-4 py-3 border rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-all text-left" value={step.label} onChange={e => updateStepValue(step.id, 'label', e.target.value)}/>
-                                </div>
-                                <div className="text-left text-left">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-1 tracking-widest text-left">Phân quyền xử lý</label>
-                                    <select className="w-full px-4 py-3 border rounded-2xl font-bold text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-left" value={step.role} onChange={e => updateStepValue(step.id, 'role', e.target.value)}>
-                                        {Object.values(UserRole).map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
-                                    </select>
-                                </div>
-                                <div className="text-left text-left">
-                                    <label className="text-[10px] font-black text-indigo-400 uppercase mb-2 block ml-1 tracking-widest text-left">Tính chất duyệt</label>
-                                    <select className="w-full px-4 py-3 border border-indigo-100 rounded-2xl font-black text-xs bg-indigo-50 text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-left" value={step.approvalType || 'DECISIVE'} onChange={e => updateStepValue(step.id, 'approvalType', e.target.value)}>
-                                        <option value="DECISIVE">Quyết Định Chốt</option>
-                                        <option value="INFORMATIVE">Chỉ Thông Báo</option>
-                                    </select>
-                                </div>
-                                <div className="text-left text-left">
-                                    <label className="text-[10px] font-black text-orange-400 uppercase mb-2 block ml-1 tracking-widest text-left">Phạm vi khối</label>
-                                    <select className="w-full px-4 py-3 border border-orange-100 rounded-2xl font-black text-xs bg-orange-50 text-orange-700 outline-none focus:ring-2 focus:ring-orange-500 transition-all text-left" value={step.condition || 'ALL'} onChange={e => updateStepValue(step.id, 'condition', e.target.value)}>
-                                        <option value="ALL">Toàn công ty</option>
-                                        <option value="PRODUCTION_ONLY">Sản Xuất</option>
-                                        <option value="OFFICE_ONLY">Văn Phòng</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <button onClick={() => deleteApprovalStep(step.id)} className="p-4 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all opacity-0 group-hover:opacity-100"><Trash2 size={24}/></button>
+                    {systemConfig.approvalWorkflow.length === 0 ? (
+                        <div className="p-12 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-300 text-center">
+                            <ShieldCheck size={48} className="mx-auto text-slate-400 mb-4"/>
+                            <p className="text-slate-500 font-bold">Chưa có bước phê duyệt nào. Nhấn "Thêm Bước Phê Duyệt" để bắt đầu.</p>
                         </div>
-                    ))}
+                    ) : (
+                        systemConfig.approvalWorkflow.map((step, index) => (
+                            <div key={step.id} className="p-8 bg-slate-50 rounded-[40px] border border-slate-200 flex flex-col md:flex-row items-center gap-8 relative group transition-all hover:bg-white hover:border-indigo-200 text-left">
+                                <div className="w-14 h-14 bg-slate-900 text-white rounded-[24px] flex items-center justify-center font-black text-lg shrink-0 shadow-xl group-hover:bg-indigo-600 transition-all">#{index + 1}</div>
+                                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full text-left">
+                                    <div className="text-left text-left">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-1 tracking-widest text-left">Tiêu đề bước</label>
+                                        <input className="w-full px-4 py-3 border rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-all text-left" value={step.label} onChange={e => updateStepValue(step.id, 'label', e.target.value)}/>
+                                    </div>
+                                    <div className="text-left text-left">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-1 tracking-widest text-left">Phân quyền xử lý</label>
+                                        <select className="w-full px-4 py-3 border rounded-2xl font-bold text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-left" value={step.role} onChange={e => updateStepValue(step.id, 'role', e.target.value)}>
+                                            <option value={UserRole.QUAN_LY}>Quản Lý</option>
+                                            <option value={UserRole.GIAM_DOC_KHOI}>Giám Đốc Khối</option>
+                                            <option value={UserRole.BAN_LANH_DAO}>Tổng Giám Đốc</option>
+                                            <option value={UserRole.NHAN_SU}>Nhân Sự (Hậu kiểm)</option>
+                                        </select>
+                                    </div>
+                                    <div className="text-left text-left">
+                                        <label className="text-[10px] font-black text-indigo-400 uppercase mb-2 block ml-1 tracking-widest text-left">Trạng thái khi vào bước</label>
+                                        <select className="w-full px-4 py-3 border border-indigo-100 rounded-2xl font-black text-xs bg-indigo-50 text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-left" value={step.statusOnEnter} onChange={e => updateStepValue(step.id, 'statusOnEnter', e.target.value)}>
+                                            <option value={RecordStatus.PENDING_MANAGER}>PENDING_MANAGER</option>
+                                            <option value={RecordStatus.PENDING_GDK}>PENDING_GDK</option>
+                                            <option value={RecordStatus.PENDING_BLD}>PENDING_BLD</option>
+                                            <option value={RecordStatus.PENDING_HR}>PENDING_HR</option>
+                                        </select>
+                                    </div>
+                                    <div className="text-left text-left">
+                                        <label className="text-[10px] font-black text-orange-400 uppercase mb-2 block ml-1 tracking-widest text-left">Tính chất duyệt</label>
+                                        <select className="w-full px-4 py-3 border border-orange-100 rounded-2xl font-black text-xs bg-orange-50 text-orange-700 outline-none focus:ring-2 focus:ring-orange-500 transition-all text-left" value={step.approvalType || 'DECISIVE'} onChange={e => updateStepValue(step.id, 'approvalType', e.target.value)}>
+                                            <option value="DECISIVE">Quyết Định Chốt</option>
+                                            <option value="INFORMATIVE">Chỉ Thông Báo</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <button onClick={() => deleteApprovalStep(step.id)} className="p-4 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all opacity-0 group-hover:opacity-100"><Trash2 size={24}/></button>
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
           )}

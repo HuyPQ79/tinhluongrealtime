@@ -69,7 +69,7 @@ const Timekeeping: React.FC = () => {
     if (!currentUser) return false;
     const user = allUsers.find(u => u.id === req.userId);
     const dept = departments.find(d => d.id === user?.currentDeptId || d.id === user?.sideDeptId);
-    return canApproveStatus(currentUser, req.status, dept, systemConfig.approvalWorkflow);
+    return canApproveStatus(currentUser, req.status, dept, systemConfig.approvalWorkflow, departments);
   };
 
   const getStatusColor = (status?: RecordStatus) => {
@@ -278,7 +278,7 @@ const Timekeeping: React.FC = () => {
         const user = allUsers.find(u => u.id === r.userId);
         const dept = departments.find(d => d.id === user?.currentDeptId || d.id === user?.sideDeptId);
         
-        if (canApproveStatus(currentUser, r.status, dept, systemConfig.approvalWorkflow)) {
+        if (canApproveStatus(currentUser, r.status, dept, systemConfig.approvalWorkflow, departments)) {
             canApproveCount++;
             if (r.status !== RecordStatus.DRAFT && r.status !== RecordStatus.APPROVED) {
                 canRejectCount++;
@@ -324,7 +324,7 @@ const Timekeeping: React.FC = () => {
 
         const user = allUsers.find(u => u.id === record.userId);
         const dept = departments.find(d => d.id === user?.currentDeptId || d.id === user?.sideDeptId);
-        const hasPermission = canApproveStatus(currentUser!, record.status, dept, systemConfig.approvalWorkflow);
+        const hasPermission = canApproveStatus(currentUser!, record.status, dept, systemConfig.approvalWorkflow, departments);
 
         if (action === 'SUBMIT' && record.status === RecordStatus.DRAFT) {
             record.status = RecordStatus.PENDING_MANAGER;
@@ -641,7 +641,7 @@ const Timekeeping: React.FC = () => {
                           {currentDeptUsers.map(u => {
                               const buffer = attendanceBuffer[u.id] || {};
                               const dept = departments.find(d => d.id === u.currentDeptId || d.id === u.sideDeptId);
-                              const hasPermission = canApproveStatus(currentUser!, buffer.status || RecordStatus.DRAFT, dept, systemConfig.approvalWorkflow);
+                              const hasPermission = canApproveStatus(currentUser!, buffer.status || RecordStatus.DRAFT, dept, systemConfig.approvalWorkflow, departments);
 
                               return (
                                   <tr key={u.id} className="hover:bg-slate-50/80 text-center transition-colors">

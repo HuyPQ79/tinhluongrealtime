@@ -675,6 +675,22 @@ const EmployeeManagement: React.FC = () => {
                             </div>
                         </div>
                       )}
+                      
+                      <div className="text-left">
+                        <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 text-left">Số người phụ thuộc (N_pt)</label>
+                        <div className="relative">
+                            <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                            <input 
+                                type="number" 
+                                min="0"
+                                className="w-full pl-10 px-4 py-2.5 border rounded-xl font-bold bg-white outline-none focus:border-indigo-500" 
+                                value={editingUser.numberOfDependents || 0} 
+                                onChange={e => setEditingUser({...editingUser, numberOfDependents: Math.max(0, Number(e.target.value))})}
+                                placeholder="0"
+                            />
+                        </div>
+                        <p className="text-[9px] text-slate-400 italic mt-1">Dùng để tính giảm trừ thuế TNCN</p>
+                      </div>
                     </div>
                   </section>
                 </div>
