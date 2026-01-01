@@ -679,7 +679,7 @@ const EmployeeManagement: React.FC = () => {
                       <div className="text-left">
                         <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 text-left">Số người phụ thuộc (N_pt)</label>
                         <div className="relative">
-                            <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                            <UserIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
                             <input 
                                 type="number" 
                                 min="0"
