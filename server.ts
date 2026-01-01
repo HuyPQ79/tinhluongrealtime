@@ -244,6 +244,10 @@ createCrud('criterion', ['criteria/items', 'criteria', 'criterions'], {
       ...rest,
       points: point !== undefined ? point : rest.points || 0,
       description: rest.description || '',
+      // Đảm bảo target có giá trị mặc định nếu không có
+      target: rest.target || 'MONTHLY_SALARY',
+      // Đảm bảo proofRequired có giá trị boolean
+      proofRequired: rest.proofRequired !== undefined ? rest.proofRequired : false,
     };
   },
 }); 
