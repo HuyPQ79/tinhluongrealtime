@@ -217,10 +217,20 @@ const createCrud = (
       try {
         const data = mapIn(req.body || {});
         if (data?.id) {
+          // Xử lý createdAt riêng cho evaluationRequest (có @default(now()) trong schema)
+          let updateData: any = data;
+          let createData: any = data;
+          
+          if (modelName === 'evaluationRequest' && data.createdAt) {
+            const { createdAt, ...dataWithoutCreatedAt } = data;
+            updateData = { ...dataWithoutCreatedAt, createdAt: new Date(createdAt) };
+            createData = dataWithoutCreatedAt; // Không set createdAt trong create, để DB tự động set
+          }
+          
           const item = await model.upsert({
             where: { id: data.id },
-            update: data,
-            create: data,
+            update: updateData,
+            create: createData,
           });
           return res.json(mapOut(item));
         }
@@ -389,11 +399,14 @@ createCrud('evaluationRequest', ['evaluations'], {
     };
   },
   mapIn: (body: any) => {
+    // Loại bỏ các field không tồn tại trong DB schema
+    const { userName, ...dbData } = body;
     return {
-      ...body,
-      description: body.description || '',
-      proofFileName: body.proofFileName || '',
-      scope: body.scope || 'MAIN_JOB',
+      ...dbData,
+      description: dbData.description || '',
+      proofFileName: dbData.proofFileName || '',
+      scope: dbData.scope || 'MAIN_JOB',
+      // createdAt sẽ được xử lý riêng trong upsert
     };
   },
 });
