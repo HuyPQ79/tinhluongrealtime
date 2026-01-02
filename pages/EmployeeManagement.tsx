@@ -661,7 +661,15 @@ const EmployeeManagement: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                       <div className="md:col-span-2 text-left">
                         <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">Đơn vị công tác</label>
-                        <select className="w-full px-4 py-2.5 border rounded-xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-500" value={editingUser.currentDeptId} onChange={e => setEditingUser({...editingUser, currentDeptId: e.target.value})}>
+                        <select 
+                          className="w-full px-4 py-2.5 border rounded-xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-500" 
+                          value={editingUser.currentDeptId || ''} 
+                          onChange={e => {
+                            const newDeptId = e.target.value || null;
+                            setEditingUser({...editingUser, currentDeptId: newDeptId});
+                          }}
+                        >
+                          <option value="">-- Chọn phòng ban --</option>
                           {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
                       </div>

@@ -29,7 +29,8 @@ import {
   User as UserIcon,
   Edit,
   Eye,
-  EyeOff
+  EyeOff,
+  Camera
 } from 'lucide-react';
 import { AppProvider, useAppContext } from './context/AppContext';
 import Dashboard from './pages/Dashboard';
@@ -51,10 +52,41 @@ const ProfileModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
     const [password, setPassword] = useState(currentUser?.password || '');
     const [confirmPassword, setConfirmPassword] = useState(currentUser?.password || '');
     const [name, setName] = useState(currentUser?.name || '');
+    const [avatar, setAvatar] = useState(currentUser?.avatar || '');
     const [showPass, setShowPass] = useState(false);
     const [showConfirmPass, setShowConfirmPass] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (currentUser) {
+            setName(currentUser.name || '');
+            setAvatar(currentUser.avatar || '');
+        }
+    }, [currentUser]);
 
     if (!currentUser) return null;
+
+    const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            // Kiểm tra kích thước file (max 2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                showToast("File ảnh quá lớn. Vui lòng chọn file nhỏ hơn 2MB", "ERROR");
+                return;
+            }
+            // Kiểm tra loại file
+            if (!file.type.startsWith('image/')) {
+                showToast("Vui lòng chọn file ảnh hợp lệ", "ERROR");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64String = reader.result as string;
+                setAvatar(base64String);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -62,32 +94,48 @@ const ProfileModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
             showToast("Mật khẩu xác nhận không khớp!", "ERROR");
             return;
         }
-        updateUser({ ...currentUser, password, name });
+        updateUser({ ...currentUser, password, name, avatar });
         onClose();
     };
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fade-in text-left">
-            <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up">
-                <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-indigo-600 rounded-2xl shadow-lg"><UserIcon size={24}/></div>
-                        <h3 className="font-black text-xl uppercase tracking-tighter">Hồ sơ cá nhân</h3>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-md p-2 sm:p-4 animate-fade-in text-left">
+            <div className="bg-white rounded-2xl sm:rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up max-h-[90vh] overflow-y-auto">
+                <div className="p-4 sm:p-8 bg-slate-900 text-white flex justify-between items-center">
+                    <div className="flex items-center gap-2 sm:gap-4">
+                        <div className="p-2 sm:p-3 bg-indigo-600 rounded-xl sm:rounded-2xl shadow-lg"><UserIcon size={20} className="sm:w-6 sm:h-6"/></div>
+                        <h3 className="font-black text-base sm:text-xl uppercase tracking-tighter">Hồ sơ cá nhân</h3>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-all"><X size={28}/></button>
+                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-all"><X size={24} className="sm:w-7 sm:h-7"/></button>
                 </div>
-                <form onSubmit={handleSubmit} className="p-10 space-y-8 font-medium">
-                    <div className="flex flex-col items-center gap-4 mb-4">
-                        <img src={currentUser.avatar} className="w-24 h-24 rounded-full border-4 border-slate-50 shadow-xl" alt="Avatar"/>
+                <form onSubmit={handleSubmit} className="p-4 sm:p-10 space-y-6 sm:space-y-8 font-medium">
+                    <div className="flex flex-col items-center gap-3 sm:gap-4 mb-4">
+                        <div className="relative group">
+                            <img src={avatar || currentUser.avatar} className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-slate-50 shadow-xl object-cover" alt="Avatar"/>
+                            <button 
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-full flex items-center justify-center transition-opacity cursor-pointer"
+                            >
+                                <Camera size={24} className="text-white"/>
+                            </button>
+                            <input 
+                                ref={fileInputRef}
+                                type="file" 
+                                accept="image/*"
+                                onChange={handleAvatarChange}
+                                className="hidden"
+                            />
+                        </div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã NV: {currentUser.id}</p>
                     </div>
                     <div className="space-y-4">
                         <div>
                             <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5 ml-1 tracking-widest">Họ và tên</label>
                             <input 
-                                className="w-full px-5 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-indigo-500 transition-all text-sm" 
+                                className="w-full px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-50 border-2 border-slate-100 rounded-xl sm:rounded-2xl font-bold outline-none focus:border-indigo-500 transition-all text-sm" 
                                 value={name}
                                 onChange={e => setName(e.target.value)}
                             />
@@ -97,7 +145,7 @@ const ProfileModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
                             <div className="relative">
                                 <input 
                                     type={showPass ? "text" : "password"}
-                                    className="w-full px-5 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-indigo-500 transition-all text-sm" 
+                                    className="w-full px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-50 border-2 border-slate-100 rounded-xl sm:rounded-2xl font-bold outline-none focus:border-indigo-500 transition-all text-sm" 
                                     placeholder="Nhập mật khẩu mới..."
                                     value={password}
                                     onChange={e => setPassword(e.target.value)}
@@ -112,7 +160,7 @@ const ProfileModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
                             <div className="relative">
                                 <input 
                                     type={showConfirmPass ? "text" : "password"}
-                                    className={`w-full px-5 py-3.5 bg-slate-50 border-2 rounded-2xl font-bold outline-none transition-all text-sm ${password === confirmPassword ? 'border-slate-100 focus:border-indigo-500' : 'border-rose-200 focus:border-rose-500'}`} 
+                                    className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-50 border-2 rounded-xl sm:rounded-2xl font-bold outline-none transition-all text-sm ${password === confirmPassword ? 'border-slate-100 focus:border-indigo-500' : 'border-rose-200 focus:border-rose-500'}`} 
                                     placeholder="Xác nhận mật khẩu..."
                                     value={confirmPassword}
                                     onChange={e => setConfirmPassword(e.target.value)}
@@ -124,8 +172,8 @@ const ProfileModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
                         </div>
                     </div>
                     <div className="pt-4 space-y-3">
-                        <button type="submit" className={`w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all ${password !== confirmPassword ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={password !== confirmPassword}>Lưu thay đổi</button>
-                        <button type="button" onClick={onClose} className="w-full py-4 bg-white border-2 border-slate-100 text-slate-400 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all">Đóng</button>
+                        <button type="submit" className={`w-full py-3 sm:py-4 bg-indigo-600 text-white rounded-xl sm:rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all ${password !== confirmPassword ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={password !== confirmPassword}>Lưu thay đổi</button>
+                        <button type="button" onClick={onClose} className="w-full py-3 sm:py-4 bg-white border-2 border-slate-100 text-slate-400 rounded-xl sm:rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all">Đóng</button>
                     </div>
                 </form>
             </div>

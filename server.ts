@@ -384,6 +384,8 @@ app.post('/api/users', async (req, res) => {
         bankName: raw.bankName || null,
         taxCode: raw.taxCode || null,
         socialInsuranceNo: raw.socialInsuranceNo || null,
+        // Avatar - xử lý base64 string
+        avatar: raw.avatar || null,
         // JSON fields
         assignedDeptIds: raw.assignedDeptIds ? (Array.isArray(raw.assignedDeptIds) ? raw.assignedDeptIds : JSON.parse(raw.assignedDeptIds || '[]')) : null,
         activeAssignments: raw.activeAssignments ? (Array.isArray(raw.activeAssignments) ? raw.activeAssignments : JSON.parse(raw.activeAssignments || '[]')) : null,
@@ -414,7 +416,19 @@ app.post('/api/users', async (req, res) => {
         cleanData.password = await bcrypt.hash("123", salt);
     }
 
-    if (cleanData.currentDeptId === "") cleanData.currentDeptId = null;
+    // Xử lý currentDeptId: nếu là empty string hoặc undefined thì set thành null
+    if (cleanData.currentDeptId === "" || cleanData.currentDeptId === undefined) {
+        cleanData.currentDeptId = null;
+    }
+    
+    // Xử lý avatar: nếu không có thì giữ nguyên avatar cũ (khi update)
+    if (!cleanData.avatar && raw.id) {
+        // Khi update, nếu không có avatar mới thì không update avatar (giữ nguyên)
+        delete cleanData.avatar;
+    } else if (!cleanData.avatar && !raw.id) {
+        // Khi tạo mới, nếu không có avatar thì set null
+        cleanData.avatar = null;
+    }
 
     console.log("--> User Data Clean:", JSON.stringify(cleanData));
 
