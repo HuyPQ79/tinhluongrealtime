@@ -1269,8 +1269,8 @@ app.post('/api/salary-records/calculate', async (req, res) => {
       // Tính Gross
       const calculatedSalary = actualBaseSalary + actualEfficiencySalary + actualPieceworkSalary + otherSalary + totalAllowance + totalBonus;
       
-      // Tính Khấu trừ BHXH
-      const insuranceBase = Math.min(calculatedSalary, Number(systemConfig?.maxInsuranceBase || 36000000));
+      // Tính Khấu trừ BHXH (10.5% nhân với LCB_dm, không phải Gross)
+      const insuranceBase = Math.min(LCB_dm, Number(systemConfig?.maxInsuranceBase || 36000000));
       const insuranceDeduction = insuranceBase * (insuranceRate / 100);
       
       // Tính Phí Công đoàn
@@ -1455,7 +1455,9 @@ app.post('/api/salary-records/:id/adjustments', async (req, res) => {
     const dependentRelief = configExtra.dependentRelief ?? 4400000;
     const pitSteps = (systemConfig?.pitSteps as any) || configExtra.pitSteps || [];
     
-    const insuranceBase = Math.min(calculatedSalary, Number(systemConfig?.maxInsuranceBase || 36000000));
+    // Tính Khấu trừ BHXH (10.5% nhân với LCB_dm, không phải Gross)
+    const LCB_dm = Number(record.LCB_dm || 0);
+    const insuranceBase = Math.min(LCB_dm, Number(systemConfig?.maxInsuranceBase || 36000000));
     const insuranceDeduction = insuranceBase * (insuranceRate / 100);
     const unionFee = insuranceBase * (unionFeeRate / 100);
     
@@ -1557,7 +1559,9 @@ app.delete('/api/salary-records/:id/adjustments/:adjId', async (req, res) => {
     const dependentRelief = configExtra.dependentRelief ?? 4400000;
     const pitSteps = (systemConfig?.pitSteps as any) || configExtra.pitSteps || [];
     
-    const insuranceBase = Math.min(calculatedSalary, Number(systemConfig?.maxInsuranceBase || 36000000));
+    // Tính Khấu trừ BHXH (10.5% nhân với LCB_dm, không phải Gross)
+    const LCB_dm = Number(record.LCB_dm || 0);
+    const insuranceBase = Math.min(LCB_dm, Number(systemConfig?.maxInsuranceBase || 36000000));
     const insuranceDeduction = insuranceBase * (insuranceRate / 100);
     const unionFee = insuranceBase * (unionFeeRate / 100);
     
@@ -1621,7 +1625,9 @@ app.put('/api/salary-records/:id/advance-payment', async (req, res) => {
     const pitSteps = (systemConfig?.pitSteps as any) || configExtra.pitSteps || [];
     
     const calculatedSalary = Number(record.calculatedSalary || 0);
-    const insuranceBase = Math.min(calculatedSalary, Number(systemConfig?.maxInsuranceBase || 36000000));
+    // Tính Khấu trừ BHXH (10.5% nhân với LCB_dm, không phải Gross)
+    const LCB_dm = Number(record.LCB_dm || 0);
+    const insuranceBase = Math.min(LCB_dm, Number(systemConfig?.maxInsuranceBase || 36000000));
     const insuranceDeduction = insuranceBase * (insuranceRate / 100);
     const unionFee = insuranceBase * (unionFeeRate / 100);
     
