@@ -43,24 +43,29 @@ export const FormulaEditor: React.FC<FormulaEditorProps> = ({
     return acc;
   }, {} as Record<string, SalaryVariable[]>);
 
-  // Insert variable at cursor position
+  // Insert variable at cursor position - thay thế text đã gõ
   const insertVariable = (varCode: string) => {
     const textarea = inputRef.current;
     if (!textarea) return;
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const before = value.substring(0, start);
-    const after = value.substring(end);
+    const textBeforeCursor = value.substring(0, start);
     
-    // Insert variable without {} (formula engine supports both)
+    // Tìm từ cuối cùng đã gõ (để thay thế)
+    const lastWordMatch = textBeforeCursor.match(/[a-zA-Z_][a-zA-Z0-9_]*$/);
+    const lastWordStart = lastWordMatch ? textBeforeCursor.lastIndexOf(lastWordMatch[0]) : start;
+    
+    // Thay thế từ đã gõ bằng biến số được chọn
+    const before = value.substring(0, lastWordStart);
+    const after = value.substring(end);
     const newValue = before + varCode + after;
     onChange(newValue);
     
     // Set cursor after inserted variable
     setTimeout(() => {
       textarea.focus();
-      const newPos = start + varCode.length;
+      const newPos = lastWordStart + varCode.length;
       textarea.setSelectionRange(newPos, newPos);
       setCursorPosition(newPos);
     }, 0);

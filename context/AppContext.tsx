@@ -437,11 +437,36 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
       showToast("Đã gửi yêu cầu đánh giá");
   };
   const approveEvaluationRequest = async (id: string) => {
-      // Cần API update status, tạm thời update local
-      setEvaluationRequests(p => p.map(r => r.id === id ? { ...r, status: RecordStatus.APPROVED } : r));
+      try {
+          const req = evaluationRequests.find(r => r.id === id);
+          if (!req) {
+              showToast("Không tìm thấy yêu cầu đánh giá", 'error');
+              return;
+          }
+          // Update status và lưu vào DB
+          const updated = { ...req, status: RecordStatus.APPROVED };
+          await api.saveEvaluation(updated);
+          setEvaluationRequests(p => p.map(r => r.id === id ? updated : r));
+          showToast("Đã phê duyệt yêu cầu đánh giá", 'success');
+      } catch (error: any) {
+          showToast(error.message || "Lỗi khi phê duyệt yêu cầu đánh giá", 'error');
+      }
   };
   const rejectEvaluationRequest = async (id: string, reason: string) => {
-       setEvaluationRequests(p => p.map(r => r.id === id ? { ...r, status: RecordStatus.REJECTED, rejectionReason: reason } : r));
+      try {
+          const req = evaluationRequests.find(r => r.id === id);
+          if (!req) {
+              showToast("Không tìm thấy yêu cầu đánh giá", 'error');
+              return;
+          }
+          // Update status và lưu vào DB
+          const updated = { ...req, status: RecordStatus.REJECTED, rejectionReason: reason };
+          await api.saveEvaluation(updated);
+          setEvaluationRequests(p => p.map(r => r.id === id ? updated : r));
+          showToast("Đã từ chối yêu cầu đánh giá", 'success');
+      } catch (error: any) {
+          showToast(error.message || "Lỗi khi từ chối yêu cầu đánh giá", 'error');
+      }
   };
 
   // --- LOGS & NOTIFICATIONS ---
