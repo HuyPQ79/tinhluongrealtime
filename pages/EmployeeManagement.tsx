@@ -348,7 +348,7 @@ const EmployeeManagement: React.FC = () => {
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
               <Users size={28} className="text-indigo-600"/> Quản Lý Tổ Chức
             </h1>
-            <p className="text-sm text-slate-500">Thông tin nhân sự chuyên sâu, lịch sử thăng tiến & tài khoản NAS.</p>
+            <p className="text-sm text-slate-500">Thông tin nhân sự chuyên sâu, lịch sử thăng tiến & tài khoản hệ thống.</p>
           </div>
           <div className="flex gap-2 w-full md:w-auto">
             {activeTab === 'USERS' && (
@@ -761,7 +761,7 @@ const EmployeeManagement: React.FC = () => {
                 <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
                     <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 flex items-start gap-4">
                         <Info size={24} className="text-indigo-600 shrink-0 mt-1"/>
-                        <p className="text-sm text-indigo-800 font-medium">Khai báo thông tin tài khoản để nhân viên có thể truy cập hệ thống HRM từ mạng nội bộ NAS Synology.</p>
+                        <p className="text-sm text-indigo-800 font-medium">Khai báo thông tin tài khoản để nhân viên có thể truy cập hệ thống HRM.</p>
                     </div>
                     <div className="bg-white p-10 rounded-[40px] border shadow-sm space-y-8 text-left">
                         <div>

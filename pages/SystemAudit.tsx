@@ -110,7 +110,7 @@ const SystemAudit: React.FC = () => {
           </div>
           <p className="text-sm text-slate-500 mb-8 font-medium leading-relaxed italic text-left text-left">
             {systemConfig.isPeriodLocked 
-              ? 'Dữ liệu Snapshot trên NAS đã được đóng gói. Không cho phép bất kỳ thay đổi nào từ User.' 
+              ? 'Dữ liệu đã được đóng gói. Không cho phép bất kỳ thay đổi nào từ User.' 
               : 'Hệ thống đang mở cho phép cập nhật số liệu công, KPI và phê duyệt phiếu lương.'}
           </p>
           {isAdmin && (
@@ -264,7 +264,7 @@ const SystemAudit: React.FC = () => {
           </table>
         </div>
         <div className="p-4 bg-slate-50 border-t flex justify-between items-center px-8 text-left text-left text-left text-left text-left text-left text-left text-left text-left">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em] text-left text-left text-left text-left text-left text-left text-left text-left">Lưu trữ Snapshot trên NAS Station • Log Integrity Verified</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em] text-left text-left text-left text-left text-left text-left text-left text-left opacity-50">© 2025 HuyPQ.ThienSon - All Rights Reserved</p>
             <span className="flex items-center gap-2 text-[10px] font-bold text-emerald-600 text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left"><Shield size={14}/> Mã hóa SHA-256</span>
         </div>
       </div>

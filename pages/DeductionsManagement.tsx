@@ -260,10 +260,10 @@ const DeductionsManagement: React.FC = () => {
                     <h4 className="font-black text-slate-800 uppercase tracking-tight text-left">Quy tắc Vận hành</h4>
                 </div>
                 <p className="text-xs text-slate-500 leading-relaxed font-medium text-left">
-                    Dữ liệu thay đổi sẽ được ghi lại trong <b>Audit Trail</b>. Khi nhấn "Lưu thay đổi", hệ thống sẽ lưu tạm vào cơ sở dữ liệu trên NAS Synology. 
+                    Dữ liệu thay đổi sẽ được ghi lại trong <b>Audit Trail</b>. Khi nhấn "Lưu thay đổi", hệ thống sẽ lưu tạm vào cơ sở dữ liệu. 
                     <br/><br/>
                     Nếu bạn có quyền <b>Quản trị (Admin)</b>, cấu hình sẽ được áp dụng ngay lập tức cho toàn bộ các bản ghi lương đang ở trạng thái nháp. 
-                    Nếu bạn là <b>Nhân sự (HR)</b>, dữ liệu sẽ được chuyển vào trạng thái "Đề xuất thay đổi" chờ Admin phê duyệt Snapshot.
+                    Nếu bạn là <b>Nhân sự (HR)</b>, dữ liệu sẽ được chuyển vào trạng thái "Đề xuất thay đổi" chờ Admin phê duyệt.
                 </p>
             </div>
             </div>

@@ -87,7 +87,7 @@ const Login: React.FC = () => {
             </button>
 
             <div className="text-center text-xs text-slate-400 mt-4">
-                <p>Hệ thống nội bộ vận hành trên Synology NAS</p>
+                <p>Hệ thống quản lý lương nội bộ</p>
                 <p>© 2025 HRM Pro Version 2.0</p>
                 <p className="mt-2 text-[10px] text-slate-300 italic">Mặc định: admin / 123</p>
             </div>

@@ -558,7 +558,7 @@ const Timekeeping: React.FC = () => {
               <div className="bg-orange-500 p-2.5 rounded-xl text-white shadow-lg"><CalendarIcon size={24}/></div>
               <div>
                   <h1 className="text-white font-bold text-lg leading-none">Chấm Công & Hiệu Suất</h1>
-                  <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest mt-1">Dữ liệu nội bộ NAS Synology</p>
+                  <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest mt-1">Dữ liệu nội bộ</p>
               </div>
           </div>
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end">

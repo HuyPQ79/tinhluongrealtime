@@ -63,7 +63,7 @@ const FormulaConfig: React.FC = () => {
       setTimeout(() => {
           setIsBackupLoading(false);
           setLastBackup(new Date().toLocaleString());
-          addAuditLog('BACKUP DATABASE', 'Đã thực hiện sao lưu cơ sở dữ liệu HRM lên Volume NAS');
+          addAuditLog('BACKUP DATABASE', 'Đã thực hiện sao lưu cơ sở dữ liệu HRM');
           alert("Sao lưu cơ sở dữ liệu phpMyAdmin thành công!");
       }, 2000);
   };
@@ -165,7 +165,7 @@ const FormulaConfig: React.FC = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 text-left">
         <div className="text-left text-left">
             <h1 className="text-3xl font-black text-slate-800 tracking-tighter text-left">Cấu Hình Vận Hành Hệ Thống</h1>
-            <p className="text-sm text-slate-500 font-medium italic mt-2 text-left">Thiết lập logic lương, workflow phê duyệt và bảo trì máy chủ Synology Station.</p>
+            <p className="text-sm text-slate-500 font-medium italic mt-2 text-left">Thiết lập logic lương, workflow phê duyệt và bảo trì hệ thống.</p>
         </div>
         <div className="flex gap-3 text-left">
             {activeTab === 'FORMULAS' && <button onClick={() => { setEditingFormula(null); setIsFModalOpen(true); }} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all active:scale-95"><Plus size={18}/> Tạo Công Thức</button>}
@@ -183,7 +183,7 @@ const FormulaConfig: React.FC = () => {
           <button onClick={() => setActiveTab('VAI_TRO')} className={`px-10 py-5 font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all shrink-0 ${activeTab === 'VAI_TRO' ? 'text-indigo-600 border-b-4 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-800'}`}><ShieldCheck size={18}/> Vai Trò</button>
           <button onClick={() => setActiveTab('APPROVAL')} className={`px-10 py-5 font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all shrink-0 ${activeTab === 'APPROVAL' ? 'text-indigo-600 border-b-4 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-800'}`}><ListChecks size={18}/> Phê Duyệt</button>
           <button onClick={() => setActiveTab('DAILY_WORK')} className={`px-10 py-5 font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all shrink-0 ${activeTab === 'DAILY_WORK' ? 'text-indigo-600 border-b-4 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-800'}`}><Briefcase size={18}/> Công Nhật</button>
-          <button onClick={() => setActiveTab('MAINTENANCE')} className={`px-10 py-5 font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all shrink-0 ${activeTab === 'MAINTENANCE' ? 'text-indigo-600 border-b-4 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-800'}`}><Server size={18}/> Bảo Trì NAS</button>
+          <button onClick={() => setActiveTab('MAINTENANCE')} className={`px-10 py-5 font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all shrink-0 ${activeTab === 'MAINTENANCE' ? 'text-indigo-600 border-b-4 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-800'}`}><Server size={18}/> Bảo Trì Hệ Thống</button>
         </div>
 
         <div className="p-10 text-left">
@@ -222,8 +222,8 @@ const FormulaConfig: React.FC = () => {
                           <div className="flex items-center gap-4 text-left">
                               <div className="w-14 h-14 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-xl group-hover:rotate-6 transition-transform text-left"><HardDrive size={28}/></div>
                               <div className="text-left text-left">
-                                  <h3 className="font-black text-slate-800 uppercase tracking-tighter text-lg text-left">Lưu Trữ Snapshot</h3>
-                                  <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest text-left">NAS File Station</p>
+                                  <h3 className="font-black text-slate-800 uppercase tracking-tighter text-lg text-left">Lưu Trữ Dữ Liệu</h3>
+                                  <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest text-left">Hệ Thống Lưu Trữ</p>
                               </div>
                           </div>
                           <div className="space-y-4 text-left">
@@ -237,10 +237,10 @@ const FormulaConfig: React.FC = () => {
                                   </div>
                               </div>
                               <button 
-                                onClick={() => alert("Hệ thống Snapshot đang quét dữ liệu định kỳ trên máy chủ nội bộ.")}
+                                onClick={() => alert("Hệ thống đang quét dữ liệu định kỳ trên máy chủ nội bộ.")}
                                 className="w-full py-4 bg-white border-2 border-slate-200 text-slate-800 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all hover:border-amber-500 hover:text-amber-600 active:scale-95"
                               >
-                                <FileText size={18}/> Quản lý File Snapshot
+                                <FileText size={18}/> Quản lý File Lưu Trữ
                               </button>
                           </div>
                       </div>

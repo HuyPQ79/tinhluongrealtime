@@ -176,9 +176,13 @@ const ProfileModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
                         <button type="button" onClick={onClose} className="w-full py-3 sm:py-4 bg-white border-2 border-slate-100 text-slate-400 rounded-xl sm:rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all">Đóng</button>
                     </div>
                 </form>
-            </div>
-        </div>
-    );
+      </div>
+      {/* Copyright Footer - Mờ, ở cuối trang */}
+      <div className="fixed bottom-0 left-0 right-0 text-center py-2 pointer-events-none z-0">
+        <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] opacity-30">© 2025 HuyPQ.ThienSon - All Rights Reserved</p>
+      </div>
+    </div>
+  );
 };
 
 const ToastContainer = () => {
@@ -272,7 +276,7 @@ const Sidebar = ({ isOpen, setIsOpen, onOpenProfile }: { isOpen: boolean; setIsO
           </div>
           <div className="overflow-hidden min-w-0">
             <span className="text-sm sm:text-lg font-black tracking-tight text-white block truncate">HRM INTERNAL</span>
-            <span className="text-[9px] sm:text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none">Synology Station</span>
+            <span className="text-[9px] sm:text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none">HRM System</span>
           </div>
         </div>
 
@@ -316,8 +320,8 @@ const Sidebar = ({ isOpen, setIsOpen, onOpenProfile }: { isOpen: boolean; setIsO
           <div className="flex items-center justify-between px-2">
              <div className="flex items-center gap-1.5 sm:gap-2">
                 <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                <span className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest hidden sm:inline">NAS Connected</span>
-                <span className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest sm:hidden">NAS</span>
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest hidden sm:inline">System Online</span>
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest sm:hidden">Online</span>
              </div>
              <span className="text-[9px] sm:text-[10px] font-black text-slate-600 uppercase">PHP 8.2</span>
           </div>
@@ -361,7 +365,7 @@ const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
         <div className="flex flex-col min-w-0 flex-1">
             <h2 className="text-base sm:text-lg md:text-xl font-black text-slate-900 tracking-tight leading-none truncate">Hệ Thống Lương Thực Lĩnh</h2>
             <div className="hidden sm:flex items-center gap-2 mt-1.5">
-                <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black rounded uppercase tracking-widest border border-slate-200">Nội Bộ NAS Synology</span>
+                <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black rounded uppercase tracking-widest border border-slate-200">Hệ Thống Nội Bộ</span>
                 <span className="text-slate-300">•</span>
                 <span className="text-emerald-500 text-[9px] font-black uppercase tracking-widest flex items-center gap-1"><Server size={10}/> Server: OK</span>
             </div>
