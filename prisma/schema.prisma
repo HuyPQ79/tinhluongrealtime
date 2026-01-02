@@ -214,6 +214,7 @@ model SystemConfig {
   standardWorkDays    Int      @default(26)
   insuranceBaseSalary Decimal  @default(1800000) @db.Decimal(18, 2)
   maxInsuranceBase    Decimal  @default(36000000) @db.Decimal(18, 2)
+  maxHoursForHRReview Int      @default(72)      // Số giờ tối đa cho HR hậu kiểm
   pitSteps            Json?
   seniorityRules      Json?
   insuranceRules      Json?

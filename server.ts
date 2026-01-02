@@ -152,6 +152,7 @@ async function initDatabase() {
                     standardWorkDays: 26, 
                     insuranceBaseSalary: 1800000, 
                     maxInsuranceBase: 36000000,
+                    maxHoursForHRReview: 72,
                     pitSteps: [],
                     seniorityRules: [],
                     insuranceRules: {}
@@ -575,6 +576,7 @@ app.get('/api/config/system', async (req, res) => {
         standardWorkDays: 26,
         insuranceBaseSalary: 1800000,
         maxInsuranceBase: 36000000,
+        maxHoursForHRReview: 72,
         pitSteps: [],
         seniorityRules: [],
         isPeriodLocked: false,

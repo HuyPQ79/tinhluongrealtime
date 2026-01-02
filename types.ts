@@ -137,6 +137,7 @@ export interface SystemConfig {
   insuranceRate: number;       
   unionFeeRate: number;        
   maxInsuranceBase: number;    
+  maxHoursForHRReview?: number; // Số giờ tối đa cho HR hậu kiểm (mặc định 72 giờ)
   pitSteps: PitStep[];
   approvalWorkflow: ApprovalStep[]; // Legacy - giữ để tương thích
   seniorityRules: SeniorityRule[];

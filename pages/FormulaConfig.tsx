@@ -371,6 +371,32 @@ const FormulaConfig: React.FC = () => {
                             );
                         })
                     )}
+                    
+                    {/* Cấu hình số giờ tối đa cho HR hậu kiểm */}
+                    <div className="p-8 bg-white rounded-[40px] border-2 border-indigo-200 shadow-lg">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center"><Clock size={24}/></div>
+                            <div>
+                                <h4 className="font-black text-slate-800 text-lg">Số giờ tối đa cho HR hậu kiểm</h4>
+                                <p className="text-xs text-slate-400 mt-1">Thời gian tối đa (tính bằng giờ) mà HR có thể thực hiện hậu kiểm sau khi bản ghi được phê duyệt</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <input
+                                type="number"
+                                min="1"
+                                max="168"
+                                value={systemConfig.maxHoursForHRReview || 72}
+                                onChange={(e) => {
+                                    const value = Math.max(1, Math.min(168, Number(e.target.value) || 72));
+                                    updateSystemConfig({ ...systemConfig, maxHoursForHRReview: value });
+                                }}
+                                className="w-32 px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl font-black text-indigo-600 text-center focus:border-indigo-500 outline-none"
+                            />
+                            <span className="text-sm font-bold text-slate-600">giờ</span>
+                            <span className="text-xs text-slate-400 italic">(Mặc định: 72 giờ = 3 ngày)</span>
+                        </div>
+                    </div>
                 </div>
             </div>
           )}

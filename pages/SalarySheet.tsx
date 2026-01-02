@@ -57,6 +57,14 @@ const SalarySheet: React.FC = () => {
       }
     };
   }, []);
+  
+  // Reset tab khi mở modal mới
+  useEffect(() => {
+    if (detailedRecord) {
+      setDetailModalTab('DETAIL');
+    }
+  }, [detailedRecord]);
+  
   const { 
     salaryRecords, currentUser, updateSalaryStatus, 
     calculateMonthlySalary, canActionSalary, addSalaryAdjustment, 
@@ -96,6 +104,7 @@ const SalarySheet: React.FC = () => {
   
   const [adjustingRecord, setAdjustingRecord] = useState<SalaryRecord | null>(null);
   const [detailedRecord, setDetailedRecord] = useState<SalaryRecord | null>(null);
+  const [detailModalTab, setDetailModalTab] = useState<'DETAIL' | 'PRINT'>('DETAIL');
   const [rejectionModal, setRejectionModal] = useState<{id: string, isOpen: boolean}>({id: '', isOpen: false});
   const [rejectionReason, setRejectionReason] = useState('');
   
@@ -770,44 +779,38 @@ const SalarySheet: React.FC = () => {
                           </div>
                       </div>
                       <div className="flex items-center gap-4">
-                        <button onClick={() => window.print()} className="px-8 py-4 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center gap-3 transition-all"><Printer size={20}/> In Phiếu Lương</button>
                         <button onClick={() => setDetailedRecord(null)} className="p-4 hover:bg-white/10 rounded-full transition-all text-slate-400"><X size={36}/></button>
                       </div>
                   </div>
+                  
+                  {/* Tab Selection */}
+                  <div className="flex gap-4 p-6 border-b bg-slate-100 no-print shrink-0">
+                      <button 
+                        onClick={() => setDetailModalTab('DETAIL')}
+                        className={`px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 transition-all ${
+                          detailModalTab === 'DETAIL' 
+                            ? 'bg-indigo-600 text-white shadow-xl' 
+                            : 'bg-white text-slate-400 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Eye size={18}/> Chi Tiết
+                      </button>
+                      <button 
+                        onClick={() => setDetailModalTab('PRINT')}
+                        className={`px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 transition-all ${
+                          detailModalTab === 'PRINT' 
+                            ? 'bg-indigo-600 text-white shadow-xl' 
+                            : 'bg-white text-slate-400 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Printer size={18}/> Phiếu In A4
+                      </button>
+                  </div>
 
                   <div className="p-10 lg:p-14 space-y-10 overflow-y-auto custom-scrollbar flex-1 print:p-0 print:space-y-4">
-                      {/* VÙNG 1: THÔNG TIN CHUNG (PRINT ONLY) */}
-                      <div className="print-only mb-6">
-                          <div className="flex justify-between items-start border-b-2 border-slate-900 pb-3 mb-4">
-                              <div className="text-left">
-                                  <h1 className="text-xl font-black uppercase tracking-tighter">PHIẾU LƯƠNG THỰC LĨNH</h1>
-                                  <p className="text-sm font-bold text-slate-600 mt-1">Kỳ thanh toán: {detailedRecord.date}</p>
-                              </div>
-                              <div className="text-right">
-                                  <p className="font-black text-sm">THIEN SON GROUP</p>
-                                  <p className="text-[10px] text-slate-500 italic">Xác thực hệ thống nội bộ</p>
-                              </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3 text-xs">
-                              <div>
-                                  <p className="font-bold text-slate-700">Họ và tên:</p>
-                                  <p className="text-slate-900 font-black uppercase">{detailedRecord.userName}</p>
-                              </div>
-                              <div>
-                                  <p className="font-bold text-slate-700">Chức vụ:</p>
-                                  <p className="text-slate-900">{detailedRecord.positionName}</p>
-                              </div>
-                              <div>
-                                  <p className="font-bold text-slate-700">Phòng ban:</p>
-                                  <p className="text-slate-900">{departments.find(d => d.id === detailedRecord.department)?.name}</p>
-                              </div>
-                              <div>
-                                  <p className="font-bold text-slate-700">Hệ số thâm niên:</p>
-                                  <p className="text-slate-900">{detailedRecord.HS_tn.toFixed(1)}x</p>
-                              </div>
-                          </div>
-                      </div>
-
+                      {/* TAB: CHI TIẾT */}
+                      {detailModalTab === 'DETAIL' && (
+                        <>
                       {/* Header Info: User Profile */}
                       <div className="bg-white p-10 rounded-[48px] border-4 border-white shadow-xl flex flex-col md:flex-row justify-between items-center gap-10">
                           <div className="flex gap-8 items-center">
@@ -1030,9 +1033,53 @@ const SalarySheet: React.FC = () => {
                               )}
                           </div>
                       </div>
+                        </>
+                      )}
+                      
+                      {/* TAB: PHIẾU IN A4 */}
+                      {detailModalTab === 'PRINT' && (
+                        <div className="space-y-6">
+                          {/* Nút In */}
+                          <div className="flex justify-end mb-4 no-print">
+                            <button onClick={() => window.print()} className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center gap-3 transition-all shadow-xl">
+                              <Printer size={20}/> In Phiếu Lương
+                            </button>
+                          </div>
+                          
+                          {/* VÙNG 1: THÔNG TIN CHUNG */}
+                          <div className="mb-6">
+                              <div className="flex justify-between items-start border-b-2 border-slate-900 pb-3 mb-4">
+                                  <div className="text-left">
+                                      <h1 className="text-xl font-black uppercase tracking-tighter">PHIẾU LƯƠNG THỰC LĨNH</h1>
+                                      <p className="text-sm font-bold text-slate-600 mt-1">Kỳ thanh toán: {detailedRecord.date}</p>
+                                  </div>
+                                  <div className="text-right">
+                                      <p className="font-black text-sm">THIEN SON GROUP</p>
+                                      <p className="text-[10px] text-slate-500 italic">Xác thực hệ thống nội bộ</p>
+                                  </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-xs">
+                                  <div>
+                                      <p className="font-bold text-slate-700">Họ và tên:</p>
+                                      <p className="text-slate-900 font-black uppercase">{detailedRecord.userName}</p>
+                                  </div>
+                                  <div>
+                                      <p className="font-bold text-slate-700">Chức vụ:</p>
+                                      <p className="text-slate-900">{detailedRecord.positionName}</p>
+                                  </div>
+                                  <div>
+                                      <p className="font-bold text-slate-700">Phòng ban:</p>
+                                      <p className="text-slate-900">{departments.find(d => d.id === detailedRecord.department)?.name}</p>
+                                  </div>
+                                  <div>
+                                      <p className="font-bold text-slate-700">Hệ số thâm niên:</p>
+                                      <p className="text-slate-900">{detailedRecord.HS_tn.toFixed(1)}x</p>
+                                  </div>
+                              </div>
+                          </div>
 
-                      {/* VÙNG 2: BẢNG LƯƠNG CHI TIẾT (PRINT ONLY - DẠNG BẢNG EXCEL) */}
-                      <div className="print-only mt-4">
+                          {/* VÙNG 2: BẢNG LƯƠNG CHI TIẾT (DẠNG BẢNG EXCEL) */}
+                          <div className="mt-4">
                           <table className="w-full border-collapse border-2 border-slate-900 text-xs">
                               <thead>
                                   <tr className="bg-slate-900 text-white">
@@ -1098,26 +1145,28 @@ const SalarySheet: React.FC = () => {
                           </table>
                       </div>
 
-                      {/* VÙNG 3: VÙNG KÝ (PRINT ONLY) */}
-                      <div className="print-only mt-8 grid grid-cols-3 gap-6 text-center">
-                          <div className="space-y-16">
-                              <p className="font-black text-[10px] uppercase text-slate-900">NGƯỜI LẬP BIỂU</p>
-                              <p className="text-[9px] text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
+                          {/* VÙNG 3: VÙNG KÝ */}
+                          <div className="mt-8 grid grid-cols-3 gap-6 text-center">
+                              <div className="space-y-16">
+                                  <p className="font-black text-[10px] uppercase text-slate-900">NGƯỜI LẬP BIỂU</p>
+                                  <p className="text-[9px] text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
+                              </div>
+                              <div className="space-y-16">
+                                  <p className="font-black text-[10px] uppercase text-slate-900">KẾ TOÁN TRƯỞNG</p>
+                                  <p className="text-[9px] text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
+                              </div>
+                              <div className="space-y-16">
+                                  <p className="font-black text-[10px] uppercase text-slate-900">BAN GIÁM ĐỐC</p>
+                                  <p className="text-[9px] text-slate-400 italic">(Ký tên & Đóng dấu)</p>
+                              </div>
                           </div>
-                          <div className="space-y-16">
-                              <p className="font-black text-[10px] uppercase text-slate-900">KẾ TOÁN TRƯỞNG</p>
-                              <p className="text-[9px] text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
+                          
+                          {/* Copyright ở cuối trang (mờ) */}
+                          <div className="mt-4 text-center">
+                              <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.2em] opacity-30">© 2025 HuyPQ.ThienSon - All Rights Reserved</p>
                           </div>
-                          <div className="space-y-16">
-                              <p className="font-black text-[10px] uppercase text-slate-900">BAN GIÁM ĐỐC</p>
-                              <p className="text-[9px] text-slate-400 italic">(Ký tên & Đóng dấu)</p>
-                          </div>
-                      </div>
-                      
-                      {/* Copyright ở cuối trang (mờ) */}
-                      <div className="print-only mt-4 text-center">
-                          <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.2em] opacity-30">© 2025 HuyPQ.ThienSon - All Rights Reserved</p>
-                      </div>
+                        </div>
+                      )}
                   </div>
 
                   {/* Footer Modal */}
