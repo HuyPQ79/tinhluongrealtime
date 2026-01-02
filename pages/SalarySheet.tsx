@@ -264,6 +264,26 @@ const SalarySheet: React.FC = () => {
                               </div>
                             </div>
                           );
+                          case 'PC': return (
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-bold text-slate-400 italic">"Phụ cấp = PC_cố định + PC_linh hoạt"</p>
+                              <div className="font-mono text-[11px] bg-black/40 p-3 rounded-xl border border-white/5 space-y-1">
+                                  <div className="flex justify-between"><span>Phụ cấp cố định:</span><span>{(data.totalAllowance - adjs.filter(a=>a.type==='ALLOWANCE').reduce((s,a)=>s+a.amount,0)).toLocaleString()}</span></div>
+                                  <div className="flex justify-between text-emerald-400"><span>Phụ cấp linh hoạt:</span><span>+{adjs.filter(a=>a.type==='ALLOWANCE').reduce((s,a)=>s+a.amount,0).toLocaleString()}</span></div>
+                                  <div className="border-t border-white/10 mt-1 pt-1 flex justify-between font-black text-blue-300"><span>Tổng phụ cấp:</span><span>{data.totalAllowance.toLocaleString()}</span></div>
+                              </div>
+                            </div>
+                          );
+                          case 'THUONG': return (
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-bold text-slate-400 italic">"Thưởng = TH_định kỳ + TH_linh hoạt"</p>
+                              <div className="font-mono text-[11px] bg-black/40 p-3 rounded-xl border border-white/5 space-y-1">
+                                  <div className="flex justify-between"><span>Thưởng định kỳ:</span><span>{(data.totalBonus - adjs.filter(a=>a.type==='BONUS').reduce((s,a)=>s+a.amount,0)).toLocaleString()}</span></div>
+                                  <div className="flex justify-between text-amber-400"><span>Thưởng linh hoạt:</span><span>+{adjs.filter(a=>a.type==='BONUS').reduce((s,a)=>s+a.amount,0).toLocaleString()}</span></div>
+                                  <div className="border-t border-white/10 mt-1 pt-1 flex justify-between font-black text-amber-300"><span>Tổng thưởng:</span><span>{data.totalBonus.toLocaleString()}</span></div>
+                              </div>
+                            </div>
+                          );
                           default: return <p className="text-xs italic text-slate-400">Đang cập nhật phân rã cho mục này...</p>;
                       }
                   })()}
@@ -625,18 +645,18 @@ const SalarySheet: React.FC = () => {
 
                   <div className="p-10 lg:p-14 space-y-10 overflow-y-auto custom-scrollbar flex-1">
                       {/* VÙNG 1: THÔNG TIN CHUNG (PRINT ONLY) */}
-                      <div className="print-only mb-8">
-                          <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
+                      <div className="print-only mb-6">
+                          <div className="flex justify-between items-start border-b-2 border-slate-900 pb-3 mb-4">
                               <div className="text-left">
-                                  <h1 className="text-2xl font-black uppercase tracking-tighter">PHIẾU CHI LƯƠNG CHI TIẾT</h1>
-                                  <p className="text-base font-bold text-slate-600 mt-1">Kỳ thanh toán: {detailedRecord.date}</p>
+                                  <h1 className="text-xl font-black uppercase tracking-tighter">PHIẾU LƯƠNG THỰC LĨNH</h1>
+                                  <p className="text-sm font-bold text-slate-600 mt-1">Kỳ thanh toán: {detailedRecord.date}</p>
                               </div>
                               <div className="text-right">
-                                  <p className="font-black text-base">CÔNG TY CỔ PHẦN CÔNG NGHỆ HRM</p>
-                                  <p className="text-xs text-slate-500 italic">Xác thực hệ thống nội bộ</p>
+                                  <p className="font-black text-sm">THIEN SON GROUP</p>
+                                  <p className="text-[10px] text-slate-500 italic">Xác thực hệ thống nội bộ</p>
                               </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="grid grid-cols-2 gap-3 text-xs">
                               <div>
                                   <p className="font-bold text-slate-700">Họ và tên:</p>
                                   <p className="text-slate-900 font-black uppercase">{detailedRecord.userName}</p>
@@ -880,8 +900,8 @@ const SalarySheet: React.FC = () => {
                       </div>
 
                       {/* VÙNG 2: BẢNG LƯƠNG CHI TIẾT (PRINT ONLY - DẠNG BẢNG EXCEL) */}
-                      <div className="print-only mt-8">
-                          <table className="w-full border-collapse border-2 border-slate-900 text-sm">
+                      <div className="print-only mt-4">
+                          <table className="w-full border-collapse border-2 border-slate-900 text-xs">
                               <thead>
                                   <tr className="bg-slate-900 text-white">
                                       <th className="border-2 border-slate-900 px-4 py-3 text-left font-black uppercase">STT</th>
@@ -938,24 +958,24 @@ const SalarySheet: React.FC = () => {
                       </div>
 
                       {/* VÙNG 3: VÙNG KÝ (PRINT ONLY) */}
-                      <div className="print-only mt-12 grid grid-cols-3 gap-8 text-center">
-                          <div className="space-y-24">
-                              <p className="font-black text-xs uppercase text-slate-900">NGƯỜI LẬP BIỂU</p>
-                              <p className="text-xs text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
+                      <div className="print-only mt-8 grid grid-cols-3 gap-6 text-center">
+                          <div className="space-y-16">
+                              <p className="font-black text-[10px] uppercase text-slate-900">NGƯỜI LẬP BIỂU</p>
+                              <p className="text-[9px] text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
                           </div>
-                          <div className="space-y-24">
-                              <p className="font-black text-xs uppercase text-slate-900">KẾ TOÁN TRƯỞNG</p>
-                              <p className="text-xs text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
+                          <div className="space-y-16">
+                              <p className="font-black text-[10px] uppercase text-slate-900">KẾ TOÁN TRƯỞNG</p>
+                              <p className="text-[9px] text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
                           </div>
-                          <div className="space-y-24">
-                              <p className="font-black text-xs uppercase text-slate-900">BAN GIÁM ĐỐC</p>
-                              <p className="text-xs text-slate-400 italic">(Ký tên & Đóng dấu)</p>
+                          <div className="space-y-16">
+                              <p className="font-black text-[10px] uppercase text-slate-900">BAN GIÁM ĐỐC</p>
+                              <p className="text-[9px] text-slate-400 italic">(Ký tên & Đóng dấu)</p>
                           </div>
                       </div>
                       
                       {/* Copyright ở cuối trang (mờ) */}
-                      <div className="print-only mt-8 text-center">
-                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] opacity-30">© 2025 HuyPQ.ThienSon - All Rights Reserved</p>
+                      <div className="print-only mt-4 text-center">
+                          <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.2em] opacity-30">© 2025 HuyPQ.ThienSon - All Rights Reserved</p>
                       </div>
                   </div>
 
