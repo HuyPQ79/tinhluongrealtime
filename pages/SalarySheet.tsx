@@ -13,6 +13,15 @@ import { getNextPendingStatus, hasRole, canApproveStatus } from '../utils/rbac';
 import * as XLSX from 'xlsx';
 
 const SalarySheet: React.FC = () => {
+  // Inject print styles
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = printStyles;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
   const { 
     salaryRecords, currentUser, updateSalaryStatus, 
     calculateMonthlySalary, canActionSalary, addSalaryAdjustment, 
@@ -714,8 +723,8 @@ const SalarySheet: React.FC = () => {
 
       {/* PHIẾU LƯƠNG SIÊU PHÂN RÃ (CARD VERSION) */}
       {detailedRecord && (
-          <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-slate-900/90 backdrop-blur-xl p-4 overflow-y-auto no-print">
-              <div className="bg-slate-50 rounded-[56px] shadow-[0_0_100px_rgba(0,0,0,0.5)] w-full max-w-6xl animate-fade-in-up my-auto printable-area flex flex-col">
+          <div className="fixed inset-0 z-[4000] flex items-start justify-center bg-slate-900/90 backdrop-blur-xl p-4 overflow-y-auto no-print">
+              <div className="bg-slate-50 rounded-[56px] shadow-[0_0_100px_rgba(0,0,0,0.5)] w-full max-w-6xl animate-fade-in-up my-4 printable-area flex flex-col max-h-[95vh] overflow-hidden">
                   {/* Modal Header (Dark) */}
                   <div className="p-10 border-b bg-slate-950 text-white flex justify-between items-center rounded-t-[56px] no-print shrink-0">
                       <div className="flex items-center gap-6">
@@ -731,7 +740,7 @@ const SalarySheet: React.FC = () => {
                       </div>
                   </div>
 
-                  <div className="p-10 lg:p-14 space-y-10 overflow-y-auto custom-scrollbar flex-1">
+                  <div className="p-10 lg:p-14 space-y-10 overflow-y-auto custom-scrollbar flex-1 print:p-0 print:space-y-4">
                       {/* VÙNG 1: THÔNG TIN CHUNG (PRINT ONLY) */}
                       <div className="print-only mb-6">
                           <div className="flex justify-between items-start border-b-2 border-slate-900 pb-3 mb-4">
@@ -1033,13 +1042,22 @@ const SalarySheet: React.FC = () => {
                                       // Thực lĩnh
                                       rows.push({stt: 13, content: 'THỰC LĨNH (NET)', amount: detailedRecord.netSalary});
                                       
-                                      return rows.map((row, idx) => (
-                                          <tr key={idx} className={row.content.includes('TỔNG') || row.content.includes('THỰC LĨNH') ? 'bg-slate-100 font-black' : ''}>
-                                              <td className="border-2 border-slate-300 px-4 py-2 text-center">{row.stt}</td>
-                                              <td className="border-2 border-slate-300 px-4 py-2">{row.content}</td>
-                                              <td className="border-2 border-slate-300 px-4 py-2 text-right font-bold">{formatCurrency(Math.abs(row.amount))}</td>
-                                          </tr>
-                                      ));
+                                      return rows.map((row, idx) => {
+                                          const isGross = row.content.includes('TỔNG THU NHẬP');
+                                          const isTotalDeduction = row.content.includes('TỔNG CÁC KHOẢN TRỪ');
+                                          const isNet = row.content.includes('THỰC LĨNH');
+                                          return (
+                                              <tr key={idx} className={
+                                                  isGross ? 'bg-blue-50 font-bold' : 
+                                                  isTotalDeduction ? 'bg-rose-50 font-bold' : 
+                                                  isNet ? 'bg-emerald-100 font-black text-lg' : ''
+                                              }>
+                                                  <td className="border-2 border-slate-300 px-4 py-2 text-center">{row.stt || ''}</td>
+                                                  <td className="border-2 border-slate-300 px-4 py-2">{row.content}</td>
+                                                  <td className="border-2 border-slate-300 px-4 py-2 text-right font-bold">{formatCurrency(Math.abs(row.amount))}</td>
+                                              </tr>
+                                          );
+                                      });
                                   })()}
                               </tbody>
                           </table>
