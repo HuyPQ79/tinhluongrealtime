@@ -414,6 +414,9 @@ app.post('/api/users', async (req, res) => {
         // Tạo mới bắt buộc có pass
         const salt = await bcrypt.genSalt(10);
         cleanData.password = await bcrypt.hash("123", salt);
+    } else {
+        // Khi update, nếu không có password mới thì không update password (giữ nguyên)
+        delete cleanData.password;
     }
 
     // Xử lý currentDeptId: nếu là empty string hoặc undefined thì set thành null
@@ -421,39 +424,71 @@ app.post('/api/users', async (req, res) => {
         cleanData.currentDeptId = null;
     }
     
-    // Xử lý avatar: nếu không có thì giữ nguyên avatar cũ (khi update)
-    if (!cleanData.avatar && raw.id) {
-        // Khi update, nếu không có avatar mới thì không update avatar (giữ nguyên)
+    // Xử lý avatar
+    if (raw.avatar === "" || raw.avatar === null) {
+        cleanData.avatar = null;
+    } else if (raw.avatar === undefined && raw.id) {
+        // Khi update, nếu không có avatar trong request => không update avatar (giữ nguyên)
         delete cleanData.avatar;
-    } else if (!cleanData.avatar && !raw.id) {
-        // Khi tạo mới, nếu không có avatar thì set null
+    } else if (raw.avatar === undefined && !raw.id) {
+        // Khi tạo mới, nếu không có avatar => set null
         cleanData.avatar = null;
     }
 
     console.log("--> User Data Clean:", JSON.stringify(cleanData));
 
-    const user = await prisma.user.upsert({
-      where: { id: cleanData.id },
-      update: cleanData,
-      create: cleanData
-    });
+    // Tách update và create data để tránh lỗi
+    const isUpdate = !!raw.id;
     
-    // Ghi audit log
-    try {
-      const actor = req.currentUser?.name || 'System';
-      await prisma.auditLog.create({
-        data: {
-          action: raw.id ? 'UPDATE_USER' : 'CREATE_USER',
-          actor,
-          details: `User ${raw.id ? 'cập nhật' : 'tạo mới'}: ${user.name} (${user.username})`,
-          isConfigAction: false
+    if (isUpdate) {
+        // Khi update: xóa các field không được cung cấp (undefined)
+        if (cleanData.password === undefined) delete cleanData.password;
+        // avatar đã được xử lý ở trên (delete nếu undefined)
+        
+        const user = await prisma.user.update({
+            where: { id: cleanData.id },
+            data: cleanData
+        });
+        
+        // Ghi audit log
+        try {
+            const actor = req.currentUser?.name || 'System';
+            await prisma.auditLog.create({
+                data: {
+                    action: 'UPDATE_USER',
+                    actor,
+                    details: `User cập nhật: ${user.name} (${user.username})`,
+                    isConfigAction: false
+                }
+            });
+        } catch (logError) {
+            console.error("Error saving audit log:", logError);
         }
-      });
-    } catch (logError) {
-      console.error("Error saving audit log:", logError);
+        
+        return res.json(user);
+    } else {
+        // Khi create: đảm bảo có đầy đủ các field bắt buộc
+        const user = await prisma.user.create({
+            data: cleanData
+        });
+        
+        // Ghi audit log
+        try {
+            const actor = req.currentUser?.name || 'System';
+            await prisma.auditLog.create({
+                data: {
+                    action: 'CREATE_USER',
+                    actor,
+                    details: `User tạo mới: ${user.name} (${user.username})`,
+                    isConfigAction: false
+                }
+            });
+        } catch (logError) {
+            console.error("Error saving audit log:", logError);
+        }
+        
+        return res.json(user);
     }
-    
-    res.json(user);
   } catch (e: any) { 
       console.error("USER ERROR:", e);
       res.status(500).json({ error: "Lỗi lưu User: " + e.message }); 
