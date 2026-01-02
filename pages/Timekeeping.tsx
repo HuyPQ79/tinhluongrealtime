@@ -39,6 +39,7 @@ const Timekeeping: React.FC = () => {
     const tab = searchParams.get('tab');
     const dateParam = searchParams.get('date');
     const deptParam = searchParams.get('deptId');
+    const evalIdParam = searchParams.get('evalId');
 
     if (tab === 'EVALUATION') setActiveMode('EVALUATION');
     else if (tab === 'SUMMARY') setActiveMode('SUMMARY');
@@ -46,6 +47,20 @@ const Timekeeping: React.FC = () => {
 
     if (dateParam) setSelectedDate(dateParam);
     if (deptParam) setSelectedDeptId(deptParam);
+    
+    // Scroll đến evaluation request cụ thể nếu có evalId
+    if (evalIdParam && tab === 'EVALUATION') {
+      setTimeout(() => {
+        const element = document.getElementById(`eval-${evalIdParam}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-4', 'ring-indigo-500', 'ring-offset-2');
+          setTimeout(() => {
+            element.classList.remove('ring-4', 'ring-indigo-500', 'ring-offset-2');
+          }, 3000);
+        }
+      }, 500);
+    }
   }, [searchParams]);
 
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
@@ -362,16 +377,81 @@ const Timekeeping: React.FC = () => {
 
     if (recordsToUpdate.length > 0) {
         saveAttendance(recordsToUpdate);
+        
+        // Tạo notification cho các trường hợp
         if (action === 'SUBMIT') {
             const dept = departments.find(d => d.id === selectedDeptId);
             if (dept?.managerId) {
-                addNotification({
-                    title: 'Duyệt công ngày mới',
-                    content: `Kế toán vừa gửi dữ liệu công ngày ${selectedDate} của ${dept.name} chờ bạn phê duyệt.`,
-                    type: 'WARNING',
-                    actionUrl: `/timekeeping?tab=ATTENDANCE&date=${selectedDate}&deptId=${selectedDeptId}`
-                });
+                const manager = allUsers.find(u => u.id === dept.managerId);
+                if (manager) {
+                    addNotification({
+                        title: 'Duyệt công ngày mới',
+                        content: `Kế toán vừa gửi dữ liệu công ngày ${selectedDate} của ${dept.name} chờ bạn phê duyệt.`,
+                        type: 'WARNING',
+                        actionUrl: `/timekeeping?tab=ATTENDANCE&date=${selectedDate}&deptId=${selectedDeptId}`
+                    });
+                }
             }
+        } else if (action === 'APPROVE') {
+            // Tìm các record đã được approve và chuyển sang bước tiếp theo
+            const approvedRecords = recordsToUpdate.filter(r => {
+                const user = allUsers.find(u => u.id === r.userId);
+                if (!user) return false;
+                const dept = departments.find(d => d.id === user.currentDeptId || d.id === user.sideDeptId);
+                const nextStatus = getNextPendingStatus(user, systemConfig.approvalWorkflow, r.status, systemRoles, 'ATTENDANCE', approvalWorkflows);
+                return nextStatus !== RecordStatus.APPROVED && nextStatus !== RecordStatus.DRAFT;
+            });
+            
+            // Tạo notification cho người có quyền phê duyệt bước tiếp theo
+            approvedRecords.forEach(record => {
+                const user = allUsers.find(u => u.id === record.userId);
+                if (!user) return;
+                const dept = departments.find(d => d.id === user.currentDeptId || d.id === user.sideDeptId);
+                const nextStatus = getNextPendingStatus(user, systemConfig.approvalWorkflow, record.status, systemRoles, 'ATTENDANCE', approvalWorkflows);
+                
+                let approverUsers: User[] = [];
+                if (nextStatus === RecordStatus.PENDING_MANAGER && dept?.managerId) {
+                    const manager = allUsers.find(u => u.id === dept.managerId);
+                    if (manager) approverUsers.push(manager);
+                } else if (nextStatus === RecordStatus.PENDING_GDK) {
+                    approverUsers = allUsers.filter(u => u.roles.includes(UserRole.GIAM_DOC_KHOI) && departments.some(d => d.blockDirectorId === u.id && (d.id === user.currentDeptId || d.id === user.sideDeptId)));
+                } else if (nextStatus === RecordStatus.PENDING_BLD) {
+                    approverUsers = allUsers.filter(u => u.roles.includes(UserRole.BAN_LANH_DAO));
+                } else if (nextStatus === RecordStatus.PENDING_HR) {
+                    if (dept?.hrId) {
+                        const hr = allUsers.find(u => u.id === dept.hrId);
+                        if (hr) approverUsers.push(hr);
+                    }
+                }
+                
+                approverUsers.forEach(approver => {
+                    addNotification({
+                        title: 'Công cần duyệt tiếp',
+                        content: `Công ngày ${record.date} của ${user.name} đã được phê duyệt bước trước, chờ bạn phê duyệt tiếp.`,
+                        type: 'WARNING',
+                        actionUrl: `/timekeeping?tab=ATTENDANCE&date=${record.date}&deptId=${dept?.id || selectedDeptId}`
+                    });
+                });
+            });
+        } else if (action === 'REJECT') {
+            // Tạo notification cho người tạo record khi bị reject
+            const rejectedRecords = recordsToUpdate.filter(r => r.status === RecordStatus.DRAFT && r.rejectionReason);
+            rejectedRecords.forEach(record => {
+                const user = allUsers.find(u => u.id === record.userId);
+                if (!user) return;
+                const dept = departments.find(d => d.id === user.currentDeptId || d.id === user.sideDeptId);
+                
+                // Tìm người tạo (thường là kế toán lương)
+                const creator = allUsers.find(u => u.roles.includes(UserRole.KE_TOAN_LUONG) && (u.assignedDeptIds?.includes(dept?.id || '') || u.currentDeptId === dept?.id));
+                if (creator) {
+                    addNotification({
+                        title: 'Công bị từ chối',
+                        content: `Công ngày ${record.date} của ${user.name} đã bị từ chối. Vui lòng kiểm tra và điều chỉnh lại.`,
+                        type: 'DANGER',
+                        actionUrl: `/timekeeping?tab=ATTENDANCE&date=${record.date}&deptId=${dept?.id || selectedDeptId}`
+                    });
+                }
+            });
         }
     }
 
@@ -440,6 +520,40 @@ const Timekeeping: React.FC = () => {
         };
     }
     addEvaluationRequest(newReq);
+    
+    // Tạo notification cho người có quyền phê duyệt
+    if (newReq.status !== RecordStatus.APPROVED && newReq.status !== RecordStatus.DRAFT) {
+        const user = allUsers.find(u => u.id === newReq.userId);
+        const dept = departments.find(d => d.id === user?.currentDeptId || d.id === user?.sideDeptId);
+        
+        // Tìm người có quyền phê duyệt dựa trên status
+        let approverUsers: User[] = [];
+        if (newReq.status === RecordStatus.PENDING_MANAGER) {
+            if (dept?.managerId) {
+                const manager = allUsers.find(u => u.id === dept.managerId);
+                if (manager) approverUsers.push(manager);
+            }
+        } else if (newReq.status === RecordStatus.PENDING_GDK) {
+            approverUsers = allUsers.filter(u => u.roles.includes(UserRole.GIAM_DOC_KHOI) && departments.some(d => d.blockDirectorId === u.id && (d.id === user?.currentDeptId || d.id === user?.sideDeptId)));
+        } else if (newReq.status === RecordStatus.PENDING_BLD) {
+            approverUsers = allUsers.filter(u => u.roles.includes(UserRole.BAN_LANH_DAO));
+        } else if (newReq.status === RecordStatus.PENDING_HR) {
+            if (dept?.hrId) {
+                const hr = allUsers.find(u => u.id === dept.hrId);
+                if (hr) approverUsers.push(hr);
+            }
+        }
+        
+        approverUsers.forEach(approver => {
+            addNotification({
+                title: 'Yêu cầu đánh giá cần duyệt',
+                content: `${currentUser?.name} đã gửi yêu cầu đánh giá "${newReq.criteriaName}" cho ${newReq.userName} chờ bạn phê duyệt.`,
+                type: 'WARNING',
+                actionUrl: `/timekeeping?tab=EVALUATION&evalId=${newReq.id}`
+            });
+        });
+    }
+    
     setEvalForm({ userId: '', criteriaId: '', description: '', proofFileName: '', scope: EvaluationScope.MAIN_JOB, target: EvaluationTarget.MONTHLY_SALARY, points: 0 });
     setUserSearch('');
     setCriteriaSearch('');
@@ -1005,7 +1119,7 @@ const Timekeeping: React.FC = () => {
                                     const canApprove = canApproveThisEval(req);
 
                                     return (
-                                        <div key={req.id} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden flex flex-col md:flex-row transition-all hover:shadow-xl hover:border-indigo-200 group text-left">
+                                        <div key={req.id} id={`eval-${req.id}`} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden flex flex-col md:flex-row transition-all hover:shadow-xl hover:border-indigo-200 group text-left">
                                             <div className={`w-2 shrink-0 ${req.type === 'BONUS' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
                                             <div className="flex-1 p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-8 text-left text-left text-left">
                                                 <div className="flex items-start gap-6 text-left text-left text-left">

@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { 
     Search, Calculator, Plus, Trash2, Info, X, Eye, Printer, ThumbsUp, ThumbsDown,
     Calendar, Target, CreditCard, Briefcase, ChevronDown, Package, History, Landmark,
@@ -7,7 +8,7 @@ import {
     Layers, ShieldCheck, Send
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { RecordStatus, UserRole, SalaryRecord, PieceworkConfig, AttendanceType, EvaluationTarget } from '../types';
+import { RecordStatus, UserRole, SalaryRecord, PieceworkConfig, AttendanceType, EvaluationTarget, User } from '../types';
 import { getNextPendingStatus, hasRole, canApproveStatus } from '../utils/rbac';
 import * as XLSX from 'xlsx';
 
@@ -18,13 +19,36 @@ const SalarySheet: React.FC = () => {
     deleteSalaryAdjustment, systemConfig, allUsers, departments,
     pieceworkConfigs, dailyAttendance, evaluationRequests,
     updateAdvancePayment, savePieceworkConfigs, showToast,
-    systemRoles, approvalWorkflows
+    systemRoles, approvalWorkflows, addNotification
   } = useAppContext();
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<'SUMMARY' | 'DETAILED_REPORT'>('SUMMARY');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
   const [selectedDeptId, setSelectedDeptId] = useState('ALL');
+  
+  // Handle Deep Links from Notifications
+  useEffect(() => {
+    const monthParam = searchParams.get('month');
+    const recordIdParam = searchParams.get('recordId');
+    
+    if (monthParam) setSelectedMonth(monthParam);
+    
+    // Scroll đến salary record cụ thể nếu có recordId
+    if (recordIdParam) {
+      setTimeout(() => {
+        const element = document.getElementById(`salary-record-${recordIdParam}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-4', 'ring-indigo-500', 'ring-offset-2', 'bg-indigo-50');
+          setTimeout(() => {
+            element.classList.remove('ring-4', 'ring-indigo-500', 'ring-offset-2', 'bg-indigo-50');
+          }, 3000);
+        }
+      }, 500);
+    }
+  }, [searchParams]);
   
   const [adjustingRecord, setAdjustingRecord] = useState<SalaryRecord | null>(null);
   const [detailedRecord, setDetailedRecord] = useState<SalaryRecord | null>(null);
@@ -83,10 +107,74 @@ const SalarySheet: React.FC = () => {
     if (!record) return;
     if (action === 'SUBMIT') {
         const beneficiary = allUsers.find(u => u.id === record.userId);
-        if (beneficiary) updateSalaryStatus(id, getNextPendingStatus(beneficiary, systemConfig.approvalWorkflow, RecordStatus.DRAFT, systemRoles, 'SALARY', approvalWorkflows));
+        if (beneficiary) {
+            const nextStatus = getNextPendingStatus(beneficiary, systemConfig.approvalWorkflow, RecordStatus.DRAFT, systemRoles, 'SALARY', approvalWorkflows);
+            updateSalaryStatus(id, nextStatus);
+            
+            // Tạo notification cho người có quyền phê duyệt
+            if (nextStatus !== RecordStatus.APPROVED && nextStatus !== RecordStatus.DRAFT) {
+                const dept = departments.find(d => d.id === record.department);
+                let approverUsers: User[] = [];
+                
+                if (nextStatus === RecordStatus.PENDING_MANAGER && dept?.managerId) {
+                    const manager = allUsers.find(u => u.id === dept.managerId);
+                    if (manager) approverUsers.push(manager);
+                } else if (nextStatus === RecordStatus.PENDING_GDK) {
+                    approverUsers = allUsers.filter(u => u.roles.includes(UserRole.GIAM_DOC_KHOI) && departments.some(d => d.blockDirectorId === u.id && d.id === record.department));
+                } else if (nextStatus === RecordStatus.PENDING_BLD) {
+                    approverUsers = allUsers.filter(u => u.roles.includes(UserRole.BAN_LANH_DAO));
+                } else if (nextStatus === RecordStatus.PENDING_HR) {
+                    if (dept?.hrId) {
+                        const hr = allUsers.find(u => u.id === dept.hrId);
+                        if (hr) approverUsers.push(hr);
+                    }
+                }
+                
+                approverUsers.forEach(approver => {
+                    addNotification({
+                        title: 'Bảng lương cần duyệt',
+                        content: `${currentUser?.name} đã gửi bảng lương tháng ${record.date} của ${record.userName} chờ bạn phê duyệt.`,
+                        type: 'WARNING',
+                        actionUrl: `/salary?month=${record.date}&recordId=${id}`
+                    });
+                });
+            }
+        }
     } else if (action === 'APPROVE') {
         const beneficiary = allUsers.find(u => u.id === record.userId);
-        if (beneficiary) updateSalaryStatus(id, getNextPendingStatus(beneficiary, systemConfig.approvalWorkflow, record.status, systemRoles, 'SALARY', approvalWorkflows));
+        if (beneficiary) {
+            const nextStatus = getNextPendingStatus(beneficiary, systemConfig.approvalWorkflow, record.status, systemRoles, 'SALARY', approvalWorkflows);
+            updateSalaryStatus(id, nextStatus);
+            
+            // Tạo notification cho bước tiếp theo nếu còn
+            if (nextStatus !== RecordStatus.APPROVED && nextStatus !== RecordStatus.DRAFT) {
+                const dept = departments.find(d => d.id === record.department);
+                let approverUsers: User[] = [];
+                
+                if (nextStatus === RecordStatus.PENDING_MANAGER && dept?.managerId) {
+                    const manager = allUsers.find(u => u.id === dept.managerId);
+                    if (manager) approverUsers.push(manager);
+                } else if (nextStatus === RecordStatus.PENDING_GDK) {
+                    approverUsers = allUsers.filter(u => u.roles.includes(UserRole.GIAM_DOC_KHOI) && departments.some(d => d.blockDirectorId === u.id && d.id === record.department));
+                } else if (nextStatus === RecordStatus.PENDING_BLD) {
+                    approverUsers = allUsers.filter(u => u.roles.includes(UserRole.BAN_LANH_DAO));
+                } else if (nextStatus === RecordStatus.PENDING_HR) {
+                    if (dept?.hrId) {
+                        const hr = allUsers.find(u => u.id === dept.hrId);
+                        if (hr) approverUsers.push(hr);
+                    }
+                }
+                
+                approverUsers.forEach(approver => {
+                    addNotification({
+                        title: 'Bảng lương cần duyệt',
+                        content: `Bảng lương tháng ${record.date} của ${record.userName} đã được phê duyệt bước trước, chờ bạn phê duyệt tiếp.`,
+                        type: 'WARNING',
+                        actionUrl: `/salary?month=${record.date}&recordId=${id}`
+                    });
+                });
+            }
+        }
     } else if (action === 'REJECT') {
         setRejectionModal({ id, isOpen: true });
     }
@@ -389,7 +477,7 @@ const SalarySheet: React.FC = () => {
                               const totalKT = r.insuranceDeduction + r.pitDeduction + r.unionFee + r.advancePayment + r.otherDeductions;
                               const isDraft = r.status === RecordStatus.DRAFT;
                               return (
-                              <tr key={r.id} className="hover:bg-indigo-50/30 transition-all">
+                              <tr key={r.id} id={`salary-record-${r.id}`} className="hover:bg-indigo-50/30 transition-all">
                                   <td className="px-8 py-5 sticky left-0 bg-white z-10 border-r shadow-right">
                                       <div className="flex items-center gap-4 text-left">
                                           <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-xs">{r.userName.charAt(0)}</div>
