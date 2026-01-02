@@ -8,7 +8,9 @@ import { useAppContext } from '../context/AppContext';
 import { DailyWorkItem, SalaryFormula, SalaryVariable, UserRole, RecordStatus, ApprovalStep, SystemRole, ApprovalWorkflow } from '../types';
 import { WorkflowModal } from './components/WorkflowModal';
 import { FormulaEditor } from './components/FormulaEditor';
+import { ConfirmationModal } from './components/ConfirmationModal';
 import { reloadFormulasVariables } from '../services/api';
+import { hasRole } from '../utils/rbac';
 
 /**
  * FormulaConfig component handles system-level configurations including salary formulas,
@@ -22,8 +24,10 @@ const FormulaConfig: React.FC = () => {
     salaryVariables, addSalaryVariable, updateSalaryVariable, deleteSalaryVariable,
     addAuditLog, systemRoles, addSystemRole, updateSystemRole, deleteSystemRole,
     approvalWorkflows, addApprovalWorkflow, updateApprovalWorkflow, deleteApprovalWorkflow,
-    salaryRanks
+    salaryRanks, currentUser
   } = useAppContext();
+
+  const isAdmin = currentUser && hasRole(currentUser, [UserRole.ADMIN]);
   
   const [activeTab, setActiveTab] = useState<'FORMULAS' | 'VARIABLES' | 'APPROVAL' | 'VAI_TRO' | 'DAILY_WORK' | 'MAINTENANCE'>('FORMULAS');
   const [varSearch, setVarSearch] = useState('');
@@ -219,16 +223,18 @@ const FormulaConfig: React.FC = () => {
                 </button>
                 <button 
                   onClick={() => { setEditingFormula(null); setFormulaExpression(''); setIsFModalOpen(true); }} 
-                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:from-indigo-700 hover:to-purple-700 transition-all active:scale-95"
+                  disabled={!isAdmin}
+                  className={`px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:from-indigo-700 hover:to-purple-700 transition-all active:scale-95 ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  title={!isAdmin ? 'Chỉ Admin mới có quyền chỉnh sửa' : ''}
                 >
                   <Plus size={18}/> Tạo Công Thức
                 </button>
               </>
             )}
-            {activeTab === 'VARIABLES' && <button onClick={() => { setEditingVar(null); setIsVarModalOpen(true); }} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all active:scale-95"><Plus size={18}/> Thêm Biến Số</button>}
-            {activeTab === 'VAI_TRO' && <button onClick={() => { setEditingRole(null); setIsRoleModalOpen(true); }} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"><Plus size={18}/> Thêm Vai Trò</button>}
-            {activeTab === 'APPROVAL' && <button onClick={() => { setEditingWorkflow(null); setIsWorkflowModalOpen(true); }} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"><Plus size={18}/> Tạo Luồng Phê Duyệt</button>}
-            {activeTab === 'DAILY_WORK' && <button onClick={() => { setEditingDWItem(null); setIsDWModalOpen(true); }} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"><Plus size={18}/> Thêm Nghiệp Vụ</button>}
+            {activeTab === 'VARIABLES' && <button onClick={() => { setEditingVar(null); setIsVarModalOpen(true); }} disabled={!isAdmin} className={`px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all active:scale-95 ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`} title={!isAdmin ? 'Chỉ Admin mới có quyền chỉnh sửa' : ''}><Plus size={18}/> Thêm Biến Số</button>}
+            {activeTab === 'VAI_TRO' && <button onClick={() => { setEditingRole(null); setIsRoleModalOpen(true); }} disabled={!isAdmin} className={`px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95 ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`} title={!isAdmin ? 'Chỉ Admin mới có quyền chỉnh sửa' : ''}><Plus size={18}/> Thêm Vai Trò</button>}
+            {activeTab === 'APPROVAL' && <button onClick={() => { setEditingWorkflow(null); setIsWorkflowModalOpen(true); }} disabled={!isAdmin} className={`px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95 ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`} title={!isAdmin ? 'Chỉ Admin mới có quyền chỉnh sửa' : ''}><Plus size={18}/> Tạo Luồng Phê Duyệt</button>}
+            {activeTab === 'DAILY_WORK' && <button onClick={() => { setEditingDWItem(null); setIsDWModalOpen(true); }} disabled={!isAdmin} className={`px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95 ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`} title={!isAdmin ? 'Chỉ Admin mới có quyền chỉnh sửa' : ''}><Plus size={18}/> Thêm Nghiệp Vụ</button>}
         </div>
       </div>
 

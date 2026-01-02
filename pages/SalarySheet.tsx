@@ -10,6 +10,7 @@ import {
 import { useAppContext } from '../context/AppContext';
 import { RecordStatus, UserRole, SalaryRecord, PieceworkConfig, AttendanceType, EvaluationTarget, User } from '../types';
 import { getNextPendingStatus, hasRole, canApproveStatus } from '../utils/rbac';
+import { ConfirmationModal } from './components/ConfirmationModal';
 import * as XLSX from 'xlsx';
 
 // CSS cho print
@@ -147,6 +148,7 @@ const SalarySheet: React.FC = () => {
   }, [searchParams]);
   const [rejectionModal, setRejectionModal] = useState<{id: string, isOpen: boolean}>({id: '', isOpen: false});
   const [rejectionReason, setRejectionReason] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, action: 'SUBMIT' | 'APPROVE' | 'REJECT' | null, recordId: string}>({isOpen: false, action: null, recordId: ''});
   
   const [advanceModal, setAdvanceModal] = useState<{ recordId: string, name: string, current: number, isOpen: boolean, status: RecordStatus }>({ recordId: '', name: '', current: 0, isOpen: false, status: RecordStatus.DRAFT });
 
@@ -196,13 +198,24 @@ const SalarySheet: React.FC = () => {
   }, [filtered]);
 
   const handleAction = (id: string, action: 'SUBMIT' | 'APPROVE' | 'REJECT') => {
-    const record = salaryRecords.find(r => r.id === id);
+    // Hiển thị confirmation modal trước
+    setConfirmModal({ isOpen: true, action, recordId: id });
+  };
+
+  const confirmAction = async () => {
+    const { action, recordId } = confirmModal;
+    if (!action || !recordId) return;
+    
+    const record = salaryRecords.find(r => r.id === recordId);
     if (!record) return;
+    
+    setConfirmModal({ isOpen: false, action: null, recordId: '' });
+    
     if (action === 'SUBMIT') {
         const beneficiary = allUsers.find(u => u.id === record.userId);
         if (beneficiary) {
             const nextStatus = getNextPendingStatus(beneficiary, systemConfig.approvalWorkflow, RecordStatus.DRAFT, systemRoles, 'SALARY', approvalWorkflows);
-            updateSalaryStatus(id, nextStatus);
+            await updateSalaryStatus(recordId, nextStatus);
             
             // Tạo notification cho người có quyền phê duyệt
             if (nextStatus !== RecordStatus.APPROVED && nextStatus !== RecordStatus.DRAFT) {
@@ -228,7 +241,7 @@ const SalarySheet: React.FC = () => {
                         title: 'Bảng lương cần duyệt',
                         content: `${currentUser?.name} đã gửi bảng lương tháng ${record.date} của ${record.userName} chờ bạn phê duyệt.`,
                         type: 'WARNING',
-                        actionUrl: `/salary?month=${record.date}&recordId=${id}`
+                        actionUrl: `/salary?month=${record.date}&recordId=${recordId}`
                     });
                 });
             }
@@ -237,7 +250,7 @@ const SalarySheet: React.FC = () => {
         const beneficiary = allUsers.find(u => u.id === record.userId);
         if (beneficiary) {
             const nextStatus = getNextPendingStatus(beneficiary, systemConfig.approvalWorkflow, record.status, systemRoles, 'SALARY', approvalWorkflows);
-            updateSalaryStatus(id, nextStatus);
+            await updateSalaryStatus(recordId, nextStatus);
             
             // Tạo notification cho bước tiếp theo nếu còn
             if (nextStatus !== RecordStatus.APPROVED && nextStatus !== RecordStatus.DRAFT) {
@@ -263,14 +276,21 @@ const SalarySheet: React.FC = () => {
                         title: 'Bảng lương cần duyệt',
                         content: `Bảng lương tháng ${record.date} của ${record.userName} đã được phê duyệt bước trước, chờ bạn phê duyệt tiếp.`,
                         type: 'WARNING',
-                        actionUrl: `/salary?month=${record.date}&recordId=${id}`
+                        actionUrl: `/salary?month=${record.date}&recordId=${recordId}`
                     });
                 });
             }
         }
     } else if (action === 'REJECT') {
-        setRejectionModal({ id, isOpen: true });
+        setRejectionModal({ id: recordId, isOpen: true });
     }
+  };
+
+  const handleRejectSalary = async () => {
+    if (!rejectionModal.id || !rejectionReason.trim()) return;
+    await updateSalaryStatus(rejectionModal.id, RecordStatus.REJECTED, rejectionReason);
+    setRejectionModal({ id: '', isOpen: false });
+    setRejectionReason('');
   };
 
   const handleOpenPieceworkModal = () => {
@@ -1341,6 +1361,48 @@ const SalarySheet: React.FC = () => {
                   </div>
               </div>
           </div>
+      )}
+
+      {/* CONFIRMATION MODAL */}
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal({ isOpen: false, action: null, recordId: '' })}
+        onConfirm={confirmAction}
+        title={
+          confirmModal.action === 'SUBMIT' ? 'Xác nhận gửi duyệt' :
+          confirmModal.action === 'APPROVE' ? 'Xác nhận phê duyệt' :
+          confirmModal.action === 'REJECT' ? 'Xác nhận từ chối' : 'Xác nhận'
+        }
+        message={
+          confirmModal.action === 'SUBMIT' ? 'Bạn có chắc muốn gửi bảng lương này để phê duyệt?' :
+          confirmModal.action === 'APPROVE' ? 'Bạn có chắc muốn phê duyệt bảng lương này?' :
+          confirmModal.action === 'REJECT' ? 'Bạn có chắc muốn từ chối bảng lương này? Vui lòng nhập lý do ở bên dưới.' : ''
+        }
+        confirmText={
+          confirmModal.action === 'SUBMIT' ? 'Gửi duyệt' :
+          confirmModal.action === 'APPROVE' ? 'Phê duyệt' :
+          confirmModal.action === 'REJECT' ? 'Từ chối' : 'Xác nhận'
+        }
+        type={confirmModal.action === 'REJECT' ? 'danger' : confirmModal.action === 'APPROVE' ? 'success' : 'warning'}
+        requireReason={confirmModal.action === 'REJECT'}
+        reason={rejectionReason}
+        onReasonChange={setRejectionReason}
+      />
+
+      {/* REJECTION MODAL (Legacy - sẽ được thay thế bởi ConfirmationModal) */}
+      {rejectionModal.isOpen && (
+        <ConfirmationModal
+          isOpen={true}
+          onClose={() => { setRejectionModal({ id: '', isOpen: false }); setRejectionReason(''); }}
+          onConfirm={handleRejectSalary}
+          title="Xác nhận từ chối bảng lương"
+          message="Bạn có chắc muốn từ chối bảng lương này? Vui lòng nhập lý do bên dưới."
+          confirmText="Từ chối"
+          type="danger"
+          requireReason={true}
+          reason={rejectionReason}
+          onReasonChange={setRejectionReason}
+        />
       )}
     </div>
   );

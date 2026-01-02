@@ -71,7 +71,7 @@ interface AppContextType {
 
   // Actions - CRUD (Đã nối API)
   markNotiRead: (id: string) => void;
-  updateSalaryStatus: (id: string, status: RecordStatus) => void;
+  updateSalaryStatus: (id: string, status: RecordStatus, rejectionReason?: string) => Promise<void>;
   canActionSalary: (record: SalaryRecord) => boolean;
   addSalaryAdjustment: (recordId: string, adj: any) => void;
   deleteSalaryAdjustment: (recordId: string, adjId: string) => void;
@@ -516,7 +516,15 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
       showToast(e.message || "Lỗi tính lương", "ERROR");
     }
   };
-  const updateSalaryStatus = (id: string, status: RecordStatus) => setSalaryRecords(p => p.map(r => r.id === id ? { ...r, status } : r));
+  const updateSalaryStatus = async (id: string, status: RecordStatus, rejectionReason?: string) => {
+    try {
+      await api.updateSalaryStatus(id, status, rejectionReason);
+      setSalaryRecords(p => p.map(r => r.id === id ? { ...r, status, rejectionReason } : r));
+      showToast(status === RecordStatus.APPROVED ? "Đã phê duyệt bảng lương" : status === RecordStatus.REJECTED ? "Đã từ chối bảng lương" : "Đã cập nhật trạng thái", 'success');
+    } catch (error: any) {
+      showToast(error.message || "Lỗi khi cập nhật trạng thái bảng lương", 'error');
+    }
+  };
   const canActionSalary = (record: SalaryRecord) => {
     if (!currentUser) return false;
     const dept = departments.find(d => d.id === record.department);
