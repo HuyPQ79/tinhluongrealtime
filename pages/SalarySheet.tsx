@@ -31,22 +31,39 @@ const printStyles = `
       background: white !important;
       padding: 1cm;
     }
+    /* Ẩn tất cả trong printable-area trước */
+    .printable-area * {
+      visibility: hidden !important;
+    }
+    /* Ẩn các phần tử no-print */
     .printable-area .no-print,
     .printable-area .no-print * {
       display: none !important;
       visibility: hidden !important;
     }
-    /* Chỉ hiển thị tab PRINT */
+    /* Ẩn tab DETAIL */
+    .printable-area .detail-tab-content {
+      display: none !important;
+      visibility: hidden !important;
+    }
+    /* Chỉ hiển thị tab PRINT và tất cả nội dung bên trong */
     .printable-area .print-tab-content {
       display: block !important;
       visibility: visible !important;
     }
     .printable-area .print-tab-content * {
       visibility: visible !important;
-      display: revert !important;
     }
     .printable-area .print-tab-content table {
       display: table !important;
+      visibility: visible !important;
+    }
+    .printable-area .print-tab-content thead {
+      display: table-header-group !important;
+      visibility: visible !important;
+    }
+    .printable-area .print-tab-content tbody {
+      display: table-row-group !important;
       visibility: visible !important;
     }
     .printable-area .print-tab-content tr {
@@ -57,10 +74,6 @@ const printStyles = `
     .printable-area .print-tab-content th {
       display: table-cell !important;
       visibility: visible !important;
-    }
-    /* Ẩn tab DETAIL */
-    .printable-area > div > div:has(> div:first-child:not(.print-tab-content)) {
-      display: none !important;
     }
     table {
       page-break-inside: avoid;
@@ -836,7 +849,7 @@ const SalarySheet: React.FC = () => {
                   <div className="p-10 lg:p-14 space-y-10 overflow-y-auto custom-scrollbar flex-1 print:p-0 print:space-y-4">
                       {/* TAB: CHI TIẾT */}
                       {detailModalTab === 'DETAIL' && (
-                        <>
+                        <div className="detail-tab-content">
                       {/* Header Info: User Profile */}
                       <div className="bg-white p-10 rounded-[48px] border-4 border-white shadow-xl flex flex-col md:flex-row justify-between items-center gap-10">
                           <div className="flex gap-8 items-center">
