@@ -99,6 +99,7 @@ const FormulaConfig: React.FC = () => {
         id: editingFormula ? editingFormula.id : `F${Date.now()}`,
         code: editingFormula?.code || `F${Date.now()}`, // Đảm bảo có code
         name: (form.elements.namedItem('fname') as HTMLInputElement).value,
+        area: (form.elements.namedItem('area') as HTMLSelectElement)?.value || 'ALL', // Đảm bảo có area
         targetField: (form.elements.namedItem('targetField') as HTMLSelectElement).value,
         formulaExpression: formulaExpression || (form.elements.namedItem('expression') as HTMLTextAreaElement)?.value || '',
         isActive: true,
@@ -109,6 +110,7 @@ const FormulaConfig: React.FC = () => {
     else addFormula(newFormula);
     setIsFModalOpen(false);
     setFormulaExpression('');
+    setEditingFormula(null);
   };
 
   const handleSaveVar = (e: React.FormEvent) => {
@@ -217,7 +219,7 @@ const FormulaConfig: React.FC = () => {
                 </button>
                 <button 
                   onClick={() => { setEditingFormula(null); setFormulaExpression(''); setIsFModalOpen(true); }} 
-                  className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all active:scale-95"
+                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:from-indigo-700 hover:to-purple-700 transition-all active:scale-95"
                 >
                   <Plus size={18}/> Tạo Công Thức
                 </button>
@@ -472,7 +474,7 @@ const FormulaConfig: React.FC = () => {
                               <p className="text-xs text-slate-400 font-medium italic mt-2 px-1 text-left">"{f.description}"</p>
                           </div>
                           <div className="flex gap-2 shrink-0 text-left text-right">
-                            <button onClick={() => {setEditingFormula(f); setFormulaExpression(f.formulaExpression); setIsFModalOpen(true);}} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm"><Edit size={20}/></button>
+                            <button onClick={() => {setEditingFormula(f); setFormulaExpression(f.formulaExpression || ''); setIsFModalOpen(true);}} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm hover:shadow-lg active:scale-95" title="Chỉnh sửa công thức"><Edit size={20}/></button>
                             <button onClick={() => openDeleteReason('FORMULA', f.id, f.name)} className="p-4 bg-rose-50 text-rose-500 rounded-2xl hover:bg-rose-600 hover:text-white transition-all shadow-sm"><Trash2 size={20}/></button>
                           </div>
                       </div>
@@ -651,42 +653,61 @@ const FormulaConfig: React.FC = () => {
                 <div className="grid grid-cols-2 gap-6 text-left">
                     <div className="text-left text-left">
                         <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 text-left">Tên gợi nhớ</label>
-                        <input name="fname" required className="w-full px-4 py-3 border-2 border-slate-100 rounded-2xl font-bold bg-slate-50 text-left" defaultValue={editingFormula?.name} />
+                        <input name="fname" required className="w-full px-4 py-3 border-2 border-slate-100 rounded-2xl font-bold bg-slate-50 text-left focus:border-indigo-500 focus:bg-white transition-all" defaultValue={editingFormula?.name} placeholder="VD: Lương CB thực tế" />
                     </div>
                     <div className="text-left text-left">
-                        <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 text-left">Trường dữ liệu đích</label>
-                        <select name="targetField" className="w-full px-4 py-3 border-2 border-slate-100 rounded-2xl font-bold bg-white text-left" defaultValue={editingFormula?.targetField}>
-                            <option value="actualBaseSalary">Lương CB thực tế</option>
-                            <option value="actualEfficiencySalary">Lương HQ thực tế</option>
-                            <option value="actualPieceworkSalary">Lương Khoán thực tế</option>
-                            <option value="otherSalary">Lương khác</option>
-                            <option value="overtimeSalary">Lương Tăng ca</option>
-                            <option value="calculatedSalary">Lương Gross</option>
-                            <option value="netSalary">Thực lĩnh NET</option>
+                        <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 text-left">Khu vực áp dụng</label>
+                        <select name="area" required className="w-full px-4 py-3 border-2 border-slate-100 rounded-2xl font-bold bg-white text-left focus:border-indigo-500 transition-all" defaultValue={editingFormula?.area || 'ALL'}>
+                            <option value="ALL">Tất cả (Văn phòng & Sản xuất)</option>
+                            <option value="OFFICE">Chỉ Văn phòng</option>
+                            <option value="FACTORY">Chỉ Sản xuất</option>
                         </select>
                     </div>
                 </div>
                 <div className="text-left text-left">
-                    <label className="text-[10px] font-black text-indigo-600 uppercase block mb-1 text-left">Biểu thức công thức (Excel style)</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 text-left">Trường dữ liệu đích</label>
+                    <select name="targetField" required className="w-full px-4 py-3 border-2 border-slate-100 rounded-2xl font-bold bg-white text-left focus:border-indigo-500 transition-all" defaultValue={editingFormula?.targetField}>
+                        <option value="">-- Chọn trường đích --</option>
+                        <option value="actualBaseSalary">actualBaseSalary - Lương CB thực tế</option>
+                        <option value="actualEfficiencySalary">actualEfficiencySalary - Lương HQ thực tế</option>
+                        <option value="actualPieceworkSalary">actualPieceworkSalary - Lương Khoán thực tế</option>
+                        <option value="otherSalary">otherSalary - Lương khác</option>
+                        <option value="Lncl">Lncl - Lương nghỉ có lương</option>
+                        <option value="overtimeSalary">overtimeSalary - Lương Tăng ca</option>
+                        <option value="calculatedSalary">calculatedSalary - Lương Gross</option>
+                        <option value="netSalary">netSalary - Thực lĩnh NET</option>
+                    </select>
+                    <p className="text-[9px] text-slate-400 mt-1 italic">Trường này xác định kết quả công thức sẽ được lưu vào đâu trong bảng lương</p>
+                </div>
+                <div className="text-left text-left">
+                    <label className="text-[10px] font-black text-indigo-600 uppercase block mb-2 text-left flex items-center gap-2">
+                      <Calculator size={14}/> Biểu thức công thức
+                    </label>
                     <div className="space-y-2">
-                      <FormulaEditor
-                        value={formulaExpression}
-                        onChange={(newValue) => {
-                          setFormulaExpression(newValue);
-                          const form = document.querySelector('form') as HTMLFormElement;
-                          if (form) {
-                            const exprInput = form.elements.namedItem('expression') as HTMLTextAreaElement;
-                            if (exprInput) {
-                              exprInput.value = newValue;
+                      <div className="border-2 border-indigo-100 rounded-2xl p-1 bg-gradient-to-br from-indigo-50 to-white">
+                        <FormulaEditor
+                          value={formulaExpression}
+                          onChange={(newValue) => {
+                            setFormulaExpression(newValue);
+                            const form = document.querySelector('form') as HTMLFormElement;
+                            if (form) {
+                              const exprInput = form.elements.namedItem('expression') as HTMLTextAreaElement;
+                              if (exprInput) {
+                                exprInput.value = newValue;
+                              }
                             }
-                          }
-                        }}
-                        variables={salaryVariables}
-                        onValidate={(isValid, error) => {
-                          // Validation feedback
-                        }}
-                      />
+                          }}
+                          variables={salaryVariables}
+                          onValidate={(isValid, error) => {
+                            // Validation feedback
+                          }}
+                        />
+                      </div>
                       <input type="hidden" name="expression" value={formulaExpression} />
+                      <div className="flex items-center gap-2 text-[9px] text-slate-500">
+                        <Info size={12}/>
+                        <span>Gõ tên biến số hoặc click vào biến ở bên phải để chèn vào công thức</span>
+                      </div>
                     </div>
                 </div>
                 <div className="text-left text-left">
@@ -694,9 +715,11 @@ const FormulaConfig: React.FC = () => {
                     <textarea name="desc" className="w-full px-4 py-3 border-2 border-slate-100 rounded-2xl text-sm bg-slate-50 text-left" defaultValue={editingFormula?.description} placeholder="Mô tả cách thức tính toán của công thức này..." />
                 </div>
             </div>
-            <div className="p-8 border-t flex justify-end gap-4 bg-slate-50 text-left">
-                <button type="button" onClick={() => setIsFModalOpen(false)} className="px-10 py-4 font-bold text-slate-500">Hủy</button>
-                <button type="submit" className="px-12 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl">Cập Nhật Công Thức</button>
+            <div className="p-8 border-t flex justify-end gap-4 bg-gradient-to-r from-slate-50 to-indigo-50 text-left">
+                <button type="button" onClick={() => { setIsFModalOpen(false); setEditingFormula(null); setFormulaExpression(''); }} className="px-10 py-4 font-bold text-slate-500 hover:text-slate-700 transition-colors rounded-xl">Hủy</button>
+                <button type="submit" className="px-12 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:from-indigo-700 hover:to-purple-700 transition-all active:scale-95 flex items-center gap-2">
+                  <CheckCircle size={16}/> {editingFormula ? 'Cập Nhật' : 'Tạo Mới'} Công Thức
+                </button>
             </div>
           </form>
         </div>

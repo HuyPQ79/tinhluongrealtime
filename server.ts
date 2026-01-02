@@ -312,6 +312,7 @@ createCrud('salaryFormula', ['formulas', 'salary-formulas'], {
   mapOut: (row: any) => ({
     ...row,
     code: row.code || '', // Đảm bảo có code
+    area: row.area || 'ALL', // Đảm bảo có area
     targetField: row.targetField || row.code || '', // Map code -> targetField nếu cần
     formulaExpression: row.expression || row.formulaExpression || '',
     isActive: row.status === 'ACTIVE' || row.isActive !== false,
@@ -322,6 +323,7 @@ createCrud('salaryFormula', ['formulas', 'salary-formulas'], {
     return {
       ...rest,
       code: rest.code || rest.id || `F${Date.now()}`, // Đảm bảo có code (từ code hoặc id hoặc generate)
+      area: rest.area || 'ALL', // Đảm bảo có area (mặc định ALL)
       targetField: targetField || rest.targetField || '', // Lưu targetField vào DB
       expression: formulaExpression || rest.expression || '',
       status: isActive !== false ? 'ACTIVE' : 'INACTIVE',
