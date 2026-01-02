@@ -12,6 +12,39 @@ import { RecordStatus, UserRole, SalaryRecord, PieceworkConfig, AttendanceType, 
 import { getNextPendingStatus, hasRole, canApproveStatus } from '../utils/rbac';
 import * as XLSX from 'xlsx';
 
+// CSS cho print
+const printStyles = `
+  @media print {
+    @page {
+      size: A4;
+      margin: 0.5cm;
+    }
+    body * {
+      visibility: hidden;
+    }
+    .printable-area, .printable-area * {
+      visibility: visible;
+    }
+    .printable-area {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      background: white;
+      padding: 1cm;
+    }
+    .no-print, .no-print * {
+      display: none !important;
+    }
+    .print-only {
+      display: block !important;
+    }
+    .print-only table {
+      page-break-inside: avoid;
+    }
+  }
+`;
+
 const SalarySheet: React.FC = () => {
   // Inject print styles
   useEffect(() => {
@@ -19,7 +52,9 @@ const SalarySheet: React.FC = () => {
     style.textContent = printStyles;
     document.head.appendChild(style);
     return () => {
-      document.head.removeChild(style);
+      if (document.head.contains(style)) {
+        document.head.removeChild(style);
+      }
     };
   }, []);
   const { 
