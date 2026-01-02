@@ -140,65 +140,6 @@ export const INITIAL_SALARY_VARIABLES = [
   { code: 'TU', name: 'Tạm ứng', description: 'Số tiền nhân viên đã ứng trước', group: 'KẾT QUẢ' },
   { code: 'Net', name: 'Thực lĩnh Net', description: 'Thu nhập cuối cùng thực nhận', group: 'KẾT QUẢ' }
 ];
-  // NHÓM CÔNG
-  { code: 'Ctc', name: 'Công tiêu chuẩn', description: 'Tổng ngày trong tháng trừ Chủ nhật', group: 'CÔNG' },
-  { code: 'Ctt', name: 'Công thực tế', description: 'Tổng công thời gian hoặc công khoán', group: 'CÔNG' },
-  { code: 'Cn', name: 'Công nhật', description: 'Số ngày làm việc theo đơn giá nhật việc', group: 'CÔNG' },
-  { code: 'OT_h_csl', name: 'Giờ OT có SL', description: 'Giờ tăng ca có tính sản lượng', group: 'CÔNG' },
-  { code: 'OT_h_ksl', name: 'Giờ OT không SL', description: 'Giờ tăng ca không tính sản lượng', group: 'CÔNG' },
-  { code: 'NCD', name: 'Nghỉ chế độ', description: 'Nghỉ hưởng BHXH (ốm, thai sản...)', group: 'CÔNG' },
-  { code: 'NL', name: 'Nghỉ lễ', description: 'Nghỉ các ngày lễ tết theo luật', group: 'CÔNG' },
-  { code: 'NCL', name: 'Nghỉ có lương', description: 'Nghỉ phép năm hưởng lương', group: 'CÔNG' },
-  { code: 'NKL', name: 'Nghỉ không lương', description: 'Nghỉ việc riêng không hưởng lương', group: 'CÔNG' },
-  { code: 'NCV', name: 'Nghỉ chờ việc', description: 'Nghỉ do lỗi doanh nghiệp/khách quan', group: 'CÔNG' },
-  { code: 'OT_hs', name: 'Hệ số tăng ca', description: 'Tỷ lệ nhân lương OT (1.5, 2.0, 3.0)', group: 'CÔNG' },
-
-  // NHÓM ĐỊNH MỨC
-  { code: 'LCB_dm', name: 'Lương CB định mức', description: 'Khai báo trong Khung năng lực', group: 'ĐỊNH MỨC' },
-  { code: 'LHQ_dm', name: 'Lương HQ định mức', description: 'Lương hiệu quả tối đa theo User', group: 'ĐỊNH MỨC' },
-  { code: 'LSL_dm', name: 'Lương khoán định mức', description: 'Sản lượng khoán * Đơn giá khoán', group: 'ĐỊNH MỨC' },
-  { code: 'SL_khoan', name: 'Sản lượng khoán', description: 'Chỉ tiêu sản lượng giao đầu tháng', group: 'ĐỊNH MỨC' },
-  { code: 'DG_khoan', name: 'Đơn giá khoán', description: 'Số tiền trên 1 đơn vị sản phẩm', group: 'ĐỊNH MỨC' },
-  { code: 'TT_ntc', name: 'Tỷ trọng nhóm TC', description: 'Trọng số của nhóm tiêu chí KPI', group: 'ĐỊNH MỨC' },
-  { code: 'HS_tn', name: 'Hệ số thâm niên', description: 'Tỷ lệ hưởng thưởng theo thời gian làm việc', group: 'ĐỊNH MỨC' },
-
-  // NHÓM THU NHẬP THỰC
-  { code: 'LCB_tt', name: 'Lương CB thực tế', description: '(LCB_dm / Ctc) * Ctt', group: 'THU NHẬP THỰC' },
-  { code: 'LHQ_tt', name: 'Lương HQ thực tế', description: 'LHQ định mức nhân tỷ lệ công và KPI', group: 'THU NHẬP THỰC' },
-  { code: 'LSL_tt', name: 'Lương khoán thực tế', description: 'Lương khoán nhân tỷ lệ công và KPI', group: 'THU NHẬP THỰC' },
-  { code: 'SL_tt', name: 'Sản lượng thực tế', description: 'Tổng sản lượng làm được trong kỳ', group: 'THU NHẬP THỰC' },
-  { code: 'Lk', name: 'Lương khác', description: 'Tổng Lcn + Ltc + Lncl', group: 'THU NHẬP THỰC' },
-  { code: 'Lcn', name: 'Lương công nhật', description: 'Tổng cộng thù lao công việc nhật', group: 'THU NHẬP THỰC' },
-  { code: 'DG_cn', name: 'Đơn giá công nhật', description: 'Số tiền trả cho 1 ngày nhật việc', group: 'THU NHẬP THỰC' },
-  { code: 'Ltc_ksl', name: 'Lương OT không SL', description: 'Lương tăng ca tính theo đơn giá nhật việc', group: 'THU NHẬP THỰC' },
-  { code: 'Ltc_csl', name: 'Lương OT có SL', description: 'Lương tăng ca tính theo Lương CB', group: 'THU NHẬP THỰC' },
-  { code: 'Lncl', name: 'Lương nghỉ có lương', description: 'Tiền lương các ngày nghỉ lễ/phép/chế độ', group: 'THU NHẬP THỰC' },
-
-  // PHỤ CẤP / THƯỞNG
-  { code: 'PC', name: 'Tổng phụ cấp', description: 'Tổng PC_cd + PC_lh', group: 'PHỤ CẤP / THƯỞNG' },
-  { code: 'PC_cd', name: 'Phụ cấp cố định', description: 'Phụ cấp theo khung năng lực', group: 'PHỤ CẤP / THƯỞNG' },
-  { code: 'PC_lh', name: 'Phụ cấp linh hoạt', description: 'Các khoản phụ cấp điều chỉnh tay', group: 'PHỤ CẤP / THƯỞNG' },
-  { code: 'TH', name: 'Tổng thưởng', description: 'Tổng TH_cd + TH_lh', group: 'PHỤ CẤP / THƯỞNG' },
-  { code: 'TH_cd', name: 'Thưởng cố định', description: 'Thưởng định kỳ lễ tết theo khung', group: 'PHỤ CẤP / THƯỞNG' },
-  { code: 'TH_lh', name: 'Thưởng linh hoạt', description: 'Thưởng điều chỉnh tay/dự án', group: 'PHỤ CẤP / THƯỞNG' },
-  { code: 'CO_tc', name: 'Điểm cộng tiêu chí', description: 'Điểm thưởng KPI từ phiếu đánh giá', group: 'PHỤ CẤP / THƯỞNG' },
-  { code: 'TR_tc', name: 'Điểm trừ tiêu chí', description: 'Điểm phạt KPI từ phiếu đánh giá', group: 'PHỤ CẤP / THƯỞNG' },
-
-  // KHẤU TRỪ / THUẾ
-  { code: 'KT', name: 'Tổng khấu trừ', description: 'BHXH + CD + TNCN + KT_kh', group: 'KHẤU TRỪ / THUẾ' },
-  { code: 'BHXH', name: 'Bảo hiểm xã hội', description: 'Tiền trích đóng BHXH (10.5%)', group: 'KHẤU TRỪ / THUẾ' },
-  { code: 'CD', name: 'Công đoàn', description: 'Kinh phí công đoàn (1%)', group: 'KHẤU TRỪ / THUẾ' },
-  { code: 'TNCN', name: 'Thuế TNCN', description: 'Thuế thu nhập cá nhân tạm tính', group: 'KHẤU TRỪ / THUẾ' },
-  { code: 'GT_bt', name: 'Giảm trừ bản thân', description: 'Mức giảm trừ thuế (11.000.000)', group: 'KHẤU TRỪ / THUẾ' },
-  { code: 'N_pt', name: 'Người phụ thuộc', description: 'Số người phụ thuộc khai báo', group: 'KHẤU TRỪ / THUẾ' },
-  { code: 'GT_pt', name: 'Giảm trừ phụ thuộc', description: '4.400.000 * N_pt', group: 'KHẤU TRỪ / THUẾ' },
-  { code: 'KT_kh', name: 'Khấu trừ khác', description: 'Các khoản trừ điều chỉnh tay/phạt', group: 'KHẤU TRỪ / THUẾ' },
-
-  // KẾT QUẢ
-  { code: 'Gross', name: 'Tổng thu nhập Gross', description: 'Tổng thu nhập trước bảo hiểm và thuế', group: 'KẾT QUẢ' },
-  { code: 'TU', name: 'Tạm ứng', description: 'Số tiền nhân viên đã ứng trước', group: 'KẾT QUẢ' },
-  { code: 'Net', name: 'Thực lĩnh Net', description: 'Thu nhập cuối cùng thực nhận', group: 'KẾT QUẢ' }
-];
 
 const INITIAL_EVALUATIONS = [
     { id: 'EV_DEC_1', userId: 'USR_NV_TIME', criteriaId: 'C1', criteriaName: 'Đi muộn/Về sớm', type: 'PENALTY', target: 'MONTHLY_SALARY', points: 1, description: 'Đi muộn 20p sáng 02/12', requesterId: 'USR_TP_TIME', status: 'APPROVED', createdAt: '2025-12-02T08:20:00Z' },
