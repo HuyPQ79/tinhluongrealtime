@@ -95,6 +95,48 @@ const authenticateToken = async (req: AuthRequest, res: express.Response, next: 
 };
 
 // === DB INIT ===
+/**
+ * Tự động seed SystemRole từ UserRole enum nếu chưa có
+ */
+async function ensureSystemRoles() {
+    try {
+        const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
+        if (!config) return;
+        
+        const existingRoles = (config.systemRoles as any) || [];
+        
+        // Định nghĩa các role mặc định từ UserRole enum
+        const defaultRoles = [
+            { id: 'ROLE_ADMIN', code: 'ADMIN', name: 'Quản Trị Hệ Thống', description: 'Quyền quản trị toàn hệ thống' },
+            { id: 'ROLE_BAN_LANH_DAO', code: 'BAN_LANH_DAO', name: 'Ban Lãnh Đạo', description: 'Ban lãnh đạo cấp cao' },
+            { id: 'ROLE_GIAM_DOC_KHOI', code: 'GIAM_DOC_KHOI', name: 'Giám Đốc Khối', description: 'Giám đốc phụ trách khối' },
+            { id: 'ROLE_QUAN_LY', code: 'QUAN_LY', name: 'Quản Lý', description: 'Trưởng phòng, quản lý đơn vị' },
+            { id: 'ROLE_KE_TOAN_LUONG', code: 'KE_TOAN_LUONG', name: 'Kế Toán Lương', description: 'Kế toán phụ trách tính lương' },
+            { id: 'ROLE_NHAN_SU', code: 'NHAN_SU', name: 'Nhân Sự', description: 'Nhân sự, hậu kiểm' },
+            { id: 'ROLE_NHAN_VIEN', code: 'NHAN_VIEN', name: 'Nhân Viên', description: 'Nhân viên thông thường' },
+        ];
+        
+        // Kiểm tra xem có role nào chưa được tạo không
+        const missingRoles = defaultRoles.filter(defaultRole => 
+            !existingRoles.some((existing: any) => existing.code === defaultRole.code)
+        );
+        
+        if (missingRoles.length > 0) {
+            // Merge với các role đã có (giữ nguyên các role đã được tùy chỉnh)
+            const updatedRoles = [...existingRoles, ...missingRoles];
+            
+            await prisma.systemConfig.update({
+                where: { id: "default_config" },
+                data: { systemRoles: updatedRoles }
+            });
+            
+            console.log(`--> Đã tự động tạo ${missingRoles.length} SystemRole từ UserRole enum`);
+        }
+    } catch (e) { 
+        console.error("Error ensuring system roles:", e); 
+    }
+}
+
 async function initDatabase() {
     try {
         await prisma.$queryRaw`SELECT 1`;
@@ -116,6 +158,10 @@ async function initDatabase() {
                 }
             });
         }
+        
+        // Đảm bảo SystemRole được seed từ UserRole enum
+        await ensureSystemRoles();
+        
         // Default Admin
         const userCount = await prisma.user.count();
         if (userCount === 0) {
