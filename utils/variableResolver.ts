@@ -45,7 +45,7 @@ export function resolveVariable(
   const nameOriginal = varName;
   
   // Các biến số cơ bản từ User và Grade
-  switch (name) {
+  switch (nameUpper) {
     case 'LCB_DM':
       return Number(context.grade?.baseSalary || 0);
     

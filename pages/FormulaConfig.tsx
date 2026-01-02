@@ -38,6 +38,7 @@ const FormulaConfig: React.FC = () => {
 
   const [isFModalOpen, setIsFModalOpen] = useState(false);
   const [editingFormula, setEditingFormula] = useState<SalaryFormula | null>(null);
+  const [formulaExpression, setFormulaExpression] = useState<string>('');
 
   const [isVarModalOpen, setIsVarModalOpen] = useState(false);
   const [editingVar, setEditingVar] = useState<SalaryVariable | null>(null);
