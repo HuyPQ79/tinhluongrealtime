@@ -46,6 +46,25 @@ const printStyles = `
 `;
 
 const SalarySheet: React.FC = () => {
+  const { 
+    salaryRecords, currentUser, updateSalaryStatus, 
+    calculateMonthlySalary, canActionSalary, addSalaryAdjustment, 
+    deleteSalaryAdjustment, systemConfig, allUsers, departments,
+    pieceworkConfigs, dailyAttendance, evaluationRequests,
+    updateAdvancePayment, savePieceworkConfigs, showToast,
+    systemRoles, approvalWorkflows, addNotification
+  } = useAppContext();
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'DETAILED_REPORT'>('SUMMARY');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
+  const [selectedDeptId, setSelectedDeptId] = useState('ALL');
+  
+  const [adjustingRecord, setAdjustingRecord] = useState<SalaryRecord | null>(null);
+  const [detailedRecord, setDetailedRecord] = useState<SalaryRecord | null>(null);
+  const [detailModalTab, setDetailModalTab] = useState<'DETAIL' | 'PRINT'>('DETAIL');
+  
   // Inject print styles
   useEffect(() => {
     const style = document.createElement('style');
@@ -64,21 +83,6 @@ const SalarySheet: React.FC = () => {
       setDetailModalTab('DETAIL');
     }
   }, [detailedRecord]);
-  
-  const { 
-    salaryRecords, currentUser, updateSalaryStatus, 
-    calculateMonthlySalary, canActionSalary, addSalaryAdjustment, 
-    deleteSalaryAdjustment, systemConfig, allUsers, departments,
-    pieceworkConfigs, dailyAttendance, evaluationRequests,
-    updateAdvancePayment, savePieceworkConfigs, showToast,
-    systemRoles, approvalWorkflows, addNotification
-  } = useAppContext();
-
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'DETAILED_REPORT'>('SUMMARY');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
-  const [selectedDeptId, setSelectedDeptId] = useState('ALL');
   
   // Handle Deep Links from Notifications
   useEffect(() => {
@@ -101,10 +105,6 @@ const SalarySheet: React.FC = () => {
       }, 500);
     }
   }, [searchParams]);
-  
-  const [adjustingRecord, setAdjustingRecord] = useState<SalaryRecord | null>(null);
-  const [detailedRecord, setDetailedRecord] = useState<SalaryRecord | null>(null);
-  const [detailModalTab, setDetailModalTab] = useState<'DETAIL' | 'PRINT'>('DETAIL');
   const [rejectionModal, setRejectionModal] = useState<{id: string, isOpen: boolean}>({id: '', isOpen: false});
   const [rejectionReason, setRejectionReason] = useState('');
   
