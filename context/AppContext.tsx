@@ -3,7 +3,7 @@ import {
   User, SalaryRecord, AttendanceRecord, EvaluationRequest, AppToast, SystemConfig, 
   Department, Criterion, CriterionGroup, PieceworkConfig, SalaryFormula, SalaryVariable, 
   AuditLog, SalaryRank, SalaryGrade, BonusType, AnnualBonusPolicy, AppNotification,
-  UserStatus, RecordStatus, AttendanceType, UserRole, EvaluationTarget
+  UserStatus, RecordStatus, AttendanceType, UserRole, EvaluationTarget, SystemRole, ApprovalWorkflow
 } from '../types';
 import { api } from '../services/api'; // Kết nối trái tim với API
 import { canApproveStatus } from '../utils/rbac'; // Đảm bảo bạn vẫn giữ file này ở thư mục gốc hoặc src/utils
@@ -50,6 +50,8 @@ interface AppContextType {
   pieceworkConfigs: PieceworkConfig[];
   bonusTypes: BonusType[];
   annualBonusPolicies: AnnualBonusPolicy[];
+  systemRoles: SystemRole[];
+  approvalWorkflows: ApprovalWorkflow[];
   
   // Actions - Authentication
   login: (u: string, p: string) => Promise<boolean>;
@@ -134,6 +136,14 @@ interface AppContextType {
   addBonusType: (bt: BonusType) => void;
   deleteBonusType: (id: string) => void;
   updateBonusPolicy: (policy: AnnualBonusPolicy) => void;
+  
+  // SystemRoles & ApprovalWorkflows
+  addSystemRole: (role: SystemRole) => Promise<void>;
+  updateSystemRole: (role: SystemRole) => Promise<void>;
+  deleteSystemRole: (id: string, reason: string) => Promise<void>;
+  addApprovalWorkflow: (workflow: ApprovalWorkflow) => Promise<void>;
+  updateApprovalWorkflow: (workflow: ApprovalWorkflow) => Promise<void>;
+  deleteApprovalWorkflow: (id: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -163,6 +173,8 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const [pieceworkConfigs, setPieceworkConfigs] = useState<PieceworkConfig[]>([]);
   const [bonusTypes, setBonusTypes] = useState<BonusType[]>([]);
   const [annualBonusPolicies, setAnnualBonusPolicies] = useState<AnnualBonusPolicy[]>([]);
+  const [systemRoles, setSystemRoles] = useState<SystemRole[]>([]);
+  const [approvalWorkflows, setApprovalWorkflows] = useState<ApprovalWorkflow[]>([]);
 
   // --- 2. HÀM TẢI DỮ LIỆU TỪ CLOUD ---
   const refreshData = async () => {
@@ -176,7 +188,7 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
             pieceworkRes, holidaysRes, dailyWorkRes,
             bonusTypesRes, annualPoliciesRes,
             attendanceRes, salaryRes,
-            evalRes, auditRes
+            evalRes, auditRes, workflowsRes
         ] = await Promise.all([
             api.getUsers(),
             api.getDepartments(),
@@ -198,7 +210,8 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
             api.getAttendance(),
             api.getSalaryRecords(),
             api.getEvaluations(),
-            api.getLogs()
+            api.getLogs(),
+            api.getApprovalWorkflows().catch(() => []),
         ]);
 
         // Cập nhật State nếu có dữ liệu
@@ -220,6 +233,16 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
         if (Array.isArray(salaryRes)) setSalaryRecords(salaryRes);
         if (Array.isArray(evalRes)) setEvaluationRequests(evalRes);
         if (Array.isArray(auditRes)) setAuditLogs(auditRes);
+        
+        // Load SystemRoles từ systemConfig.systemRoles
+        if (configRes?.systemRoles && Array.isArray(configRes.systemRoles)) {
+          setSystemRoles(configRes.systemRoles);
+        }
+        
+        // Load ApprovalWorkflows
+        if (Array.isArray(workflowsRes)) {
+          setApprovalWorkflows(workflowsRes);
+        }
 
         // Các phần dữ liệu cấu hình chi tiết (sẽ cần gọi thêm nếu API server hỗ trợ tách lẻ)
         // Hiện tại tạm thời để trống hoặc lấy từ systemConfig nếu backend gộp chung
@@ -469,7 +492,7 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const canActionSalary = (record: SalaryRecord) => {
     if (!currentUser) return false;
     const dept = departments.find(d => d.id === record.department);
-    return canApproveStatus(currentUser, record.status, dept, systemConfig.approvalWorkflow);
+    return canApproveStatus(currentUser, record.status, dept, systemConfig.approvalWorkflow, departments, systemRoles, 'SALARY', approvalWorkflows);
   };
   
   // Các hàm phụ chưa có API tương ứng cụ thể
@@ -492,12 +515,77 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const addBonusType = (bt: BonusType) => setBonusTypes(p => [...p, bt]);
   const deleteBonusType = (id: string) => setBonusTypes(p => p.filter(i => i.id !== id));
   const updateBonusPolicy = (policy: AnnualBonusPolicy) => setAnnualBonusPolicies(p => [...p, policy]); // Demo logic
+  
+  // --- SYSTEM ROLES ---
+  const addSystemRole = async (role: SystemRole) => {
+    const updatedRoles = [...systemRoles, role];
+    await updateSystemConfig({ systemRoles: updatedRoles });
+    setSystemRoles(updatedRoles);
+    await addAuditLog('ADD_SYSTEM_ROLE', `Thêm vai trò: ${role.name}`, 'SYSTEM_ROLE', role.id);
+    showToast("Đã thêm vai trò");
+  };
+  
+  const updateSystemRole = async (role: SystemRole) => {
+    const updatedRoles = systemRoles.map(r => r.id === role.id ? role : r);
+    await updateSystemConfig({ systemRoles: updatedRoles });
+    setSystemRoles(updatedRoles);
+    await addAuditLog('UPDATE_SYSTEM_ROLE', `Cập nhật vai trò: ${role.name}`, 'SYSTEM_ROLE', role.id);
+    showToast("Đã cập nhật vai trò");
+  };
+  
+  const deleteSystemRole = async (id: string, reason: string) => {
+    const role = systemRoles.find(r => r.id === id);
+    const updatedRoles = systemRoles.filter(r => r.id !== id);
+    await updateSystemConfig({ systemRoles: updatedRoles });
+    setSystemRoles(updatedRoles);
+    await addAuditLog('DELETE_SYSTEM_ROLE', `Xóa vai trò: ${role?.name || id}. Lý do: ${reason}`, 'SYSTEM_ROLE', id);
+    showToast("Đã xóa vai trò");
+  };
+  
+  // --- APPROVAL WORKFLOWS ---
+  const addApprovalWorkflow = async (workflow: ApprovalWorkflow) => {
+    try {
+      const saved = await api.saveApprovalWorkflow(workflow);
+      setApprovalWorkflows(p => [...p, saved]);
+      await addAuditLog('ADD_APPROVAL_WORKFLOW', `Thêm luồng phê duyệt: ${workflow.contentType}`, 'APPROVAL_WORKFLOW', saved.id);
+      showToast("Đã thêm luồng phê duyệt");
+    } catch (e: any) {
+      showToast(e.message || "Lỗi thêm luồng phê duyệt", "ERROR");
+    }
+  };
+  
+  const updateApprovalWorkflow = async (workflow: ApprovalWorkflow) => {
+    try {
+      const saved = await api.saveApprovalWorkflow(workflow);
+      setApprovalWorkflows(p => p.map(w => w.id === workflow.id ? saved : w));
+      await addAuditLog('UPDATE_APPROVAL_WORKFLOW', `Cập nhật luồng phê duyệt: ${workflow.contentType}`, 'APPROVAL_WORKFLOW', saved.id);
+      showToast("Đã cập nhật luồng phê duyệt");
+    } catch (e: any) {
+      showToast(e.message || "Lỗi cập nhật luồng phê duyệt", "ERROR");
+    }
+  };
+  
+  const deleteApprovalWorkflow = async (id: string) => {
+    try {
+      // Backend cần có endpoint DELETE, tạm thời đóng workflow bằng cách set effectiveTo
+      const workflow = approvalWorkflows.find(w => w.id === id);
+      if (workflow) {
+        await api.saveApprovalWorkflow({ ...workflow, effectiveTo: new Date().toISOString() });
+        setApprovalWorkflows(p => p.filter(w => w.id !== id));
+        await addAuditLog('DELETE_APPROVAL_WORKFLOW', `Xóa luồng phê duyệt: ${workflow.contentType}`, 'APPROVAL_WORKFLOW', id);
+        showToast("Đã xóa luồng phê duyệt");
+      }
+    } catch (e: any) {
+      showToast(e.message || "Lỗi xóa luồng phê duyệt", "ERROR");
+    }
+  };
 
   return (
     <AppContext.Provider value={{ 
         currentUser, allUsers, salaryRecords, dailyAttendance, evaluationRequests, systemConfig, pendingSystemConfig,
         departments, criteriaList, criteriaGroups, toasts, notifications, auditLogs,
         salaryRanks, salaryGrids, dailyWorkCatalog, formulas, salaryVariables, pieceworkConfigs, bonusTypes, annualBonusPolicies,
+        systemRoles, approvalWorkflows,
         
         login, logout, saveAttendance, updateUser, calculateMonthlySalary,
         showToast, formatCurrency, formatDateTime, getStandardWorkDays, canViewUser,
@@ -511,7 +599,8 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
         updateCriterionGroup, deleteCriterionGroup, addUser, deleteUser, approveUserUpdate, rejectUserUpdate,
         addDept, updateDept, deleteDept, bulkAddUsers, updateAttendanceStatus, addEvaluationRequest,
         approveEvaluationRequest, rejectEvaluationRequest, addNotification, addRank, updateRank, deleteRank,
-        addGrade, updateGrade, deleteGrade, addBonusType, deleteBonusType, updateBonusPolicy
+        addGrade, updateGrade, deleteGrade, addBonusType, deleteBonusType, updateBonusPolicy,
+        addSystemRole, updateSystemRole, deleteSystemRole, addApprovalWorkflow, updateApprovalWorkflow, deleteApprovalWorkflow
     }}>
       {children}
     </AppContext.Provider>

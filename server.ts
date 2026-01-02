@@ -572,6 +572,7 @@ app.get('/api/config/system', async (req, res) => {
       insuranceRate: extra.insuranceRate ?? 10.5,
       unionFeeRate: extra.unionFeeRate ?? 1,
       approvalWorkflow: extra.approvalWorkflow || [],
+      systemRoles: (cfg?.systemRoles as any) || [],
       lastModifiedBy: extra.lastModifiedBy,
       lastModifiedAt: extra.lastModifiedAt,
       hasPendingChanges: extra.hasPendingChanges,
@@ -594,6 +595,7 @@ app.post('/api/config/system', async (req, res) => {
       maxInsuranceBase: body.maxInsuranceBase ?? 0,
       pitSteps: body.pitSteps ?? [],
       seniorityRules: body.seniorityRules ?? [],
+      systemRoles: body.systemRoles ?? null, // Lưu SystemRoles vào DB
       // insuranceRules lưu phần mở rộng
       insuranceRules: {
         isPeriodLocked: body.isPeriodLocked,
@@ -1637,6 +1639,96 @@ app.put('/api/salary-records/:id/status', async (req, res) => {
   } catch (e: any) {
     console.error("Error updating salary status:", e);
     res.status(500).json({ message: e.message || 'Lỗi cập nhật trạng thái' });
+  }
+});
+
+// ==========================================
+// APPROVAL WORKFLOW API
+// ==========================================
+app.get('/api/approval-workflows', async (req, res) => {
+  try {
+    const { contentType, activeOnly } = req.query;
+    let where: any = {};
+    
+    if (contentType) {
+      where.contentType = contentType;
+    }
+    
+    if (activeOnly === 'true') {
+      where.effectiveTo = null; // Chỉ lấy các workflow đang active
+    }
+    
+    const workflows = await prisma.approvalWorkflow.findMany({
+      where,
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    // Map dữ liệu để khớp với types.ts
+    const clean = workflows.map((w: any) => ({
+      id: w.id,
+      contentType: w.contentType,
+      targetRankIds: Array.isArray(w.targetRankIds) ? w.targetRankIds : (typeof w.targetRankIds === 'string' ? JSON.parse(w.targetRankIds) : []),
+      initiatorRoleIds: Array.isArray(w.initiatorRoleIds) ? w.initiatorRoleIds : (typeof w.initiatorRoleIds === 'string' ? JSON.parse(w.initiatorRoleIds) : []),
+      approverRoleIds: Array.isArray(w.approverRoleIds) ? w.approverRoleIds : (typeof w.approverRoleIds === 'string' ? JSON.parse(w.approverRoleIds) : []),
+      auditorRoleIds: Array.isArray(w.auditorRoleIds) ? w.auditorRoleIds : (typeof w.auditorRoleIds === 'string' ? JSON.parse(w.auditorRoleIds) : []),
+      effectiveFrom: w.effectiveFrom ? w.effectiveFrom.toISOString() : new Date().toISOString(),
+      effectiveTo: w.effectiveTo ? w.effectiveTo.toISOString() : undefined,
+      version: w.version || 1,
+      createdAt: w.createdAt ? w.createdAt.toISOString() : new Date().toISOString(),
+    }));
+    
+    res.json(clean);
+  } catch (e: any) {
+    console.error("Error getting approval workflows:", e);
+    res.status(500).json({ message: e.message || 'Lỗi lấy luồng phê duyệt' });
+  }
+});
+
+app.post('/api/approval-workflows', async (req, res) => {
+  try {
+    const body = req.body || {};
+    
+    // Chuẩn hóa dữ liệu
+    const cleanData: any = {
+      id: body.id || `wf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      contentType: body.contentType || 'ATTENDANCE',
+      targetRankIds: Array.isArray(body.targetRankIds) ? body.targetRankIds : [],
+      initiatorRoleIds: Array.isArray(body.initiatorRoleIds) ? body.initiatorRoleIds : [],
+      approverRoleIds: Array.isArray(body.approverRoleIds) ? body.approverRoleIds : [],
+      auditorRoleIds: Array.isArray(body.auditorRoleIds) ? body.auditorRoleIds : [],
+      effectiveFrom: body.effectiveFrom ? new Date(body.effectiveFrom) : new Date(),
+      effectiveTo: body.effectiveTo ? new Date(body.effectiveTo) : null,
+      version: body.version || 1,
+    };
+    
+    // Nếu đang tạo workflow mới, đóng các workflow cũ cùng contentType
+    if (!body.id && body.contentType) {
+      await prisma.approvalWorkflow.updateMany({
+        where: {
+          contentType: body.contentType,
+          effectiveTo: null
+        },
+        data: {
+          effectiveTo: new Date()
+        }
+      });
+    }
+    
+    const workflow = await prisma.approvalWorkflow.upsert({
+      where: { id: cleanData.id },
+      update: cleanData,
+      create: cleanData,
+    });
+    
+    res.json({
+      ...workflow,
+      effectiveFrom: workflow.effectiveFrom ? workflow.effectiveFrom.toISOString() : new Date().toISOString(),
+      effectiveTo: workflow.effectiveTo ? workflow.effectiveTo.toISOString() : undefined,
+      createdAt: workflow.createdAt ? workflow.createdAt.toISOString() : new Date().toISOString(),
+    });
+  } catch (e: any) {
+    console.error("Error saving approval workflow:", e);
+    res.status(500).json({ message: e.message || 'Lỗi lưu luồng phê duyệt' });
   }
 });
 

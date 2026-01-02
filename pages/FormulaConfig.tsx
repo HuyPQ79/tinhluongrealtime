@@ -5,7 +5,8 @@ import {
   Zap, AlertTriangle, Database, HardDrive, RotateCcw, FileText, Download, Upload, Server, ShieldAlert
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { DailyWorkItem, SalaryFormula, SalaryVariable, UserRole, RecordStatus, ApprovalStep } from '../types';
+import { DailyWorkItem, SalaryFormula, SalaryVariable, UserRole, RecordStatus, ApprovalStep, SystemRole, ApprovalWorkflow } from '../types';
+import { WorkflowModal } from './components/WorkflowModal';
 
 /**
  * FormulaConfig component handles system-level configurations including salary formulas,
@@ -17,10 +18,12 @@ const FormulaConfig: React.FC = () => {
     formulas, addFormula, updateFormula, deleteFormula,
     systemConfig, updateSystemConfig,
     salaryVariables, addSalaryVariable, updateSalaryVariable, deleteSalaryVariable,
-    addAuditLog
+    addAuditLog, systemRoles, addSystemRole, updateSystemRole, deleteSystemRole,
+    approvalWorkflows, addApprovalWorkflow, updateApprovalWorkflow, deleteApprovalWorkflow,
+    salaryRanks
   } = useAppContext();
   
-  const [activeTab, setActiveTab] = useState<'FORMULAS' | 'VARIABLES' | 'APPROVAL' | 'DAILY_WORK' | 'MAINTENANCE'>('FORMULAS');
+  const [activeTab, setActiveTab] = useState<'FORMULAS' | 'VARIABLES' | 'APPROVAL' | 'VAI_TRO' | 'DAILY_WORK' | 'MAINTENANCE'>('FORMULAS');
   const [varSearch, setVarSearch] = useState('');
   
   const [isBackupLoading, setIsBackupLoading] = useState(false);
@@ -35,8 +38,14 @@ const FormulaConfig: React.FC = () => {
   const [isVarModalOpen, setIsVarModalOpen] = useState(false);
   const [editingVar, setEditingVar] = useState<SalaryVariable | null>(null);
 
+  // SystemRoles & ApprovalWorkflows
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+  const [editingRole, setEditingRole] = useState<SystemRole | null>(null);
+  const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
+  const [editingWorkflow, setEditingWorkflow] = useState<ApprovalWorkflow | null>(null);
+
   // REASON MODAL FOR DELETE
-  const [reasonModal, setReasonModal] = useState<{ isOpen: boolean, type: 'FORMULA' | 'DW' | 'VAR', id: string, name: string }>({ isOpen: false, type: 'FORMULA', id: '', name: '' });
+  const [reasonModal, setReasonModal] = useState<{ isOpen: boolean, type: 'FORMULA' | 'DW' | 'VAR' | 'ROLE', id: string, name: string }>({ isOpen: false, type: 'FORMULA', id: '', name: '' });
   const [reasonText, setReasonText] = useState('');
 
   const handleSaveDW = (e: React.FormEvent) => {
@@ -100,43 +109,55 @@ const FormulaConfig: React.FC = () => {
         deleteFormula(reasonModal.id, reasonText);
     } else if (reasonModal.type === 'DW') {
         deleteDailyWorkItem(reasonModal.id, reasonText);
-    } else {
+    } else if (reasonModal.type === 'VAR') {
         deleteSalaryVariable(reasonModal.id, reasonText);
+    } else if (reasonModal.type === 'ROLE') {
+        deleteSystemRole(reasonModal.id, reasonText);
     }
     setReasonModal({ isOpen: false, type: 'FORMULA', id: '', name: '' });
   };
 
-  const addApprovalStep = () => {
-      const newStep: ApprovalStep = {
-          id: `step_${Date.now()}`,
-          role: UserRole.QUAN_LY,
-          label: 'Bước phê duyệt mới',
-          statusOnEnter: RecordStatus.PENDING_MANAGER,
-          approvalType: 'DECISIVE',
-          condition: 'ALL'
-      };
-      updateSystemConfig({ approvalWorkflow: [...(systemConfig.approvalWorkflow || []), newStep] });
+  // SystemRoles handlers
+  const handleSaveRole = (e: React.FormEvent) => {
+    e.preventDefault();
+    const form = e.target as HTMLFormElement;
+    const newRole: SystemRole = {
+      id: editingRole ? editingRole.id : `role_${Date.now()}`,
+      code: (form.elements.namedItem('code') as HTMLInputElement).value.toUpperCase(),
+      name: (form.elements.namedItem('name') as HTMLInputElement).value,
+      description: (form.elements.namedItem('description') as HTMLTextAreaElement).value || undefined
+    };
+    if (editingRole) {
+      updateSystemRole(newRole);
+    } else {
+      addSystemRole(newRole);
+    }
+    setIsRoleModalOpen(false);
+    setEditingRole(null);
   };
 
-  const deleteApprovalStep = (id: string) => {
-      updateSystemConfig({ approvalWorkflow: systemConfig.approvalWorkflow.filter(s => s.id !== id) });
-  };
-
-  const updateStepValue = (id: string, field: keyof ApprovalStep, value: any) => {
-      const updated = systemConfig.approvalWorkflow.map(s => {
-          if (s.id === id) {
-              const newStep = { ...s, [field]: value };
-              if (field === 'role') {
-                  if (value === UserRole.QUAN_LY) newStep.statusOnEnter = RecordStatus.PENDING_MANAGER;
-                  if (value === UserRole.GIAM_DOC_KHOI) newStep.statusOnEnter = RecordStatus.PENDING_GDK;
-                  if (value === UserRole.BAN_LANH_DAO) newStep.statusOnEnter = RecordStatus.PENDING_BLD;
-                  if (value === UserRole.NHAN_SU) newStep.statusOnEnter = RecordStatus.PENDING_HR;
-              }
-              return newStep;
-          }
-          return s;
-      });
-      updateSystemConfig({ approvalWorkflow: updated });
+  // ApprovalWorkflow handlers
+  const handleSaveWorkflow = async (workflow: Partial<ApprovalWorkflow>) => {
+    const newWorkflow: ApprovalWorkflow = {
+      id: editingWorkflow?.id || `wf_${Date.now()}`,
+      contentType: workflow.contentType || 'ATTENDANCE',
+      targetRankIds: workflow.targetRankIds || [],
+      initiatorRoleIds: workflow.initiatorRoleIds || [],
+      approverRoleIds: workflow.approverRoleIds || [],
+      auditorRoleIds: workflow.auditorRoleIds || [],
+      effectiveFrom: editingWorkflow?.effectiveFrom || new Date().toISOString(),
+      effectiveTo: editingWorkflow?.effectiveTo,
+      version: editingWorkflow?.version || 1,
+      createdAt: editingWorkflow?.createdAt || new Date().toISOString()
+    };
+    
+    if (editingWorkflow) {
+      await updateApprovalWorkflow(newWorkflow);
+    } else {
+      await addApprovalWorkflow(newWorkflow);
+    }
+    setIsWorkflowModalOpen(false);
+    setEditingWorkflow(null);
   };
 
   return (
@@ -149,7 +170,8 @@ const FormulaConfig: React.FC = () => {
         <div className="flex gap-3 text-left">
             {activeTab === 'FORMULAS' && <button onClick={() => { setEditingFormula(null); setIsFModalOpen(true); }} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all active:scale-95"><Plus size={18}/> Tạo Công Thức</button>}
             {activeTab === 'VARIABLES' && <button onClick={() => { setEditingVar(null); setIsVarModalOpen(true); }} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all active:scale-95"><Plus size={18}/> Thêm Biến Số</button>}
-            {activeTab === 'APPROVAL' && <button onClick={addApprovalStep} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"><Plus size={18}/> Thêm Cấp Phê Duyệt</button>}
+            {activeTab === 'VAI_TRO' && <button onClick={() => { setEditingRole(null); setIsRoleModalOpen(true); }} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"><Plus size={18}/> Thêm Vai Trò</button>}
+            {activeTab === 'APPROVAL' && <button onClick={() => { setEditingWorkflow(null); setIsWorkflowModalOpen(true); }} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"><Plus size={18}/> Tạo Luồng Phê Duyệt</button>}
             {activeTab === 'DAILY_WORK' && <button onClick={() => { setEditingDWItem(null); setIsDWModalOpen(true); }} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"><Plus size={18}/> Thêm Nghiệp Vụ</button>}
         </div>
       </div>
@@ -158,6 +180,7 @@ const FormulaConfig: React.FC = () => {
         <div className="flex border-b bg-slate-50/50 overflow-x-auto custom-scrollbar text-left">
           <button onClick={() => setActiveTab('FORMULAS')} className={`px-10 py-5 font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all shrink-0 ${activeTab === 'FORMULAS' ? 'text-indigo-600 border-b-4 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-800'}`}><Sigma size={18}/> Logic Lương</button>
           <button onClick={() => setActiveTab('VARIABLES')} className={`px-10 py-5 font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all shrink-0 ${activeTab === 'VARIABLES' ? 'text-indigo-600 border-b-4 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-800'}`}><BookOpen size={18}/> Biến Số</button>
+          <button onClick={() => setActiveTab('VAI_TRO')} className={`px-10 py-5 font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all shrink-0 ${activeTab === 'VAI_TRO' ? 'text-indigo-600 border-b-4 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-800'}`}><ShieldCheck size={18}/> Vai Trò</button>
           <button onClick={() => setActiveTab('APPROVAL')} className={`px-10 py-5 font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all shrink-0 ${activeTab === 'APPROVAL' ? 'text-indigo-600 border-b-4 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-800'}`}><ListChecks size={18}/> Phê Duyệt</button>
           <button onClick={() => setActiveTab('DAILY_WORK')} className={`px-10 py-5 font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all shrink-0 ${activeTab === 'DAILY_WORK' ? 'text-indigo-600 border-b-4 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-800'}`}><Briefcase size={18}/> Công Nhật</button>
           <button onClick={() => setActiveTab('MAINTENANCE')} className={`px-10 py-5 font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all shrink-0 ${activeTab === 'MAINTENANCE' ? 'text-indigo-600 border-b-4 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-800'}`}><Server size={18}/> Bảo Trì NAS</button>
@@ -225,69 +248,128 @@ const FormulaConfig: React.FC = () => {
               </div>
           )}
 
-          {activeTab === 'APPROVAL' && (
+          {activeTab === 'VAI_TRO' && (
             <div className="max-w-5xl mx-auto space-y-10 text-left animate-fade-in-up">
-                <div className="bg-indigo-600 text-white p-10 rounded-[50px] flex flex-col md:flex-row items-center gap-8 shadow-2xl shadow-indigo-500/20 text-left">
+                <div className="bg-purple-600 text-white p-10 rounded-[50px] flex flex-col md:flex-row items-center gap-8 shadow-2xl shadow-purple-500/20 text-left">
                    <div className="w-20 h-20 bg-white/20 rounded-[32px] flex items-center justify-center text-white border border-white/20 shadow-xl shrink-0"><ShieldCheck size={40}/></div>
                    <div className="text-center md:text-left text-left">
-                       <h3 className="font-black uppercase text-xl tracking-tighter text-left">Luồng Phê Duyệt Thông Minh</h3>
-                       <p className="text-sm text-indigo-100 mt-2 font-medium leading-relaxed italic opacity-80 text-left">Cơ chế phê duyệt đa cấp tự động bỏ qua các bước không liên quan đến vị trí của nhân sự được thụ hưởng.</p>
+                       <h3 className="font-black uppercase text-xl tracking-tighter text-left">Quản Lý Vai Trò Hệ Thống</h3>
+                       <p className="text-sm text-purple-100 mt-2 font-medium leading-relaxed italic opacity-80 text-left">Khai báo các vai trò được sử dụng trong luồng phê duyệt và phân quyền.</p>
                    </div>
                 </div>
 
-                <div className="flex justify-end mb-6">
-                    <button 
-                        onClick={addApprovalStep}
-                        className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-indigo-700 transition-all"
-                    >
-                        <Plus size={18}/> Thêm Bước Phê Duyệt
-                    </button>
-                </div>
-
-                <div className="space-y-6 text-left text-left">
-                    {systemConfig.approvalWorkflow.length === 0 ? (
-                        <div className="p-12 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-300 text-center">
-                            <ShieldCheck size={48} className="mx-auto text-slate-400 mb-4"/>
-                            <p className="text-slate-500 font-bold">Chưa có bước phê duyệt nào. Nhấn "Thêm Bước Phê Duyệt" để bắt đầu.</p>
-                        </div>
-                    ) : (
-                        systemConfig.approvalWorkflow.map((step, index) => (
-                            <div key={step.id} className="p-8 bg-slate-50 rounded-[40px] border border-slate-200 flex flex-col md:flex-row items-center gap-8 relative group transition-all hover:bg-white hover:border-indigo-200 text-left">
-                                <div className="w-14 h-14 bg-slate-900 text-white rounded-[24px] flex items-center justify-center font-black text-lg shrink-0 shadow-xl group-hover:bg-indigo-600 transition-all">#{index + 1}</div>
-                                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full text-left">
-                                    <div className="text-left text-left">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-1 tracking-widest text-left">Tiêu đề bước</label>
-                                        <input className="w-full px-4 py-3 border rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-all text-left" value={step.label} onChange={e => updateStepValue(step.id, 'label', e.target.value)}/>
-                                    </div>
-                                    <div className="text-left text-left">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-1 tracking-widest text-left">Phân quyền xử lý</label>
-                                        <select className="w-full px-4 py-3 border rounded-2xl font-bold text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-left" value={step.role} onChange={e => updateStepValue(step.id, 'role', e.target.value)}>
-                                            <option value={UserRole.QUAN_LY}>Quản Lý</option>
-                                            <option value={UserRole.GIAM_DOC_KHOI}>Giám Đốc Khối</option>
-                                            <option value={UserRole.BAN_LANH_DAO}>Tổng Giám Đốc</option>
-                                            <option value={UserRole.NHAN_SU}>Nhân Sự (Hậu kiểm)</option>
-                                        </select>
-                                    </div>
-                                    <div className="text-left text-left">
-                                        <label className="text-[10px] font-black text-indigo-400 uppercase mb-2 block ml-1 tracking-widest text-left">Trạng thái khi vào bước</label>
-                                        <select className="w-full px-4 py-3 border border-indigo-100 rounded-2xl font-black text-xs bg-indigo-50 text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-left" value={step.statusOnEnter} onChange={e => updateStepValue(step.id, 'statusOnEnter', e.target.value)}>
-                                            <option value={RecordStatus.PENDING_MANAGER}>PENDING_MANAGER</option>
-                                            <option value={RecordStatus.PENDING_GDK}>PENDING_GDK</option>
-                                            <option value={RecordStatus.PENDING_BLD}>PENDING_BLD</option>
-                                            <option value={RecordStatus.PENDING_HR}>PENDING_HR</option>
-                                        </select>
-                                    </div>
-                                    <div className="text-left text-left">
-                                        <label className="text-[10px] font-black text-orange-400 uppercase mb-2 block ml-1 tracking-widest text-left">Tính chất duyệt</label>
-                                        <select className="w-full px-4 py-3 border border-orange-100 rounded-2xl font-black text-xs bg-orange-50 text-orange-700 outline-none focus:ring-2 focus:ring-orange-500 transition-all text-left" value={step.approvalType || 'DECISIVE'} onChange={e => updateStepValue(step.id, 'approvalType', e.target.value)}>
-                                            <option value="DECISIVE">Quyết Định Chốt</option>
-                                            <option value="INFORMATIVE">Chỉ Thông Báo</option>
-                                        </select>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
+                    {systemRoles.map(role => (
+                        <div key={role.id} className="p-8 bg-slate-50 rounded-[40px] border border-slate-200 flex flex-col justify-between group hover:bg-white hover:border-purple-200 transition-all text-left">
+                            <div className="space-y-4 text-left">
+                                <div className="flex items-center justify-between text-left">
+                                    <code className="text-xs font-black text-purple-600 uppercase tracking-widest bg-purple-50 px-3 py-1 rounded-lg">{role.code}</code>
+                                    <div className="flex gap-2 text-left">
+                                        <button onClick={() => { setEditingRole(role); setIsRoleModalOpen(true); }} className="p-2 text-slate-300 hover:text-indigo-600 transition-colors"><Edit size={16}/></button>
+                                        <button onClick={() => openDeleteReason('ROLE', role.id, role.name)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors"><Trash2 size={16}/></button>
                                     </div>
                                 </div>
-                                <button onClick={() => deleteApprovalStep(step.id)} className="p-4 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all opacity-0 group-hover:opacity-100"><Trash2 size={24}/></button>
+                                <h4 className="font-black text-slate-800 text-lg tracking-tight text-left">{role.name}</h4>
+                                {role.description && (
+                                    <p className="text-xs text-slate-400 italic leading-relaxed text-left">"{role.description}"</p>
+                                )}
                             </div>
-                        ))
+                        </div>
+                    ))}
+                    {systemRoles.length === 0 && (
+                        <div className="col-span-full p-12 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-300 text-center">
+                            <ShieldCheck size={48} className="mx-auto text-slate-400 mb-4"/>
+                            <p className="text-slate-500 font-bold">Chưa có vai trò nào. Nhấn "Thêm Vai Trò" để bắt đầu.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+          )}
+
+          {activeTab === 'APPROVAL' && (
+            <div className="max-w-6xl mx-auto space-y-10 text-left animate-fade-in-up">
+                <div className="bg-indigo-600 text-white p-10 rounded-[50px] flex flex-col md:flex-row items-center gap-8 shadow-2xl shadow-indigo-500/20 text-left">
+                   <div className="w-20 h-20 bg-white/20 rounded-[32px] flex items-center justify-center text-white border border-white/20 shadow-xl shrink-0"><ShieldCheck size={40}/></div>
+                   <div className="text-center md:text-left text-left">
+                       <h3 className="font-black uppercase text-xl tracking-tighter text-left">Cấu Hình Luồng Phê Duyệt</h3>
+                       <p className="text-sm text-indigo-100 mt-2 font-medium leading-relaxed italic opacity-80 text-left">Thiết lập luồng phê duyệt theo nội dung, đối tượng và vai trò. Dữ liệu lưu snapshot từ thời điểm ấn Lưu.</p>
+                   </div>
+                </div>
+
+                <div className="space-y-6 text-left">
+                    {approvalWorkflows.filter(w => !w.effectiveTo).length === 0 ? (
+                        <div className="p-12 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-300 text-center">
+                            <ShieldCheck size={48} className="mx-auto text-slate-400 mb-4"/>
+                            <p className="text-slate-500 font-bold">Chưa có luồng phê duyệt nào. Nhấn "Tạo Luồng Phê Duyệt" để bắt đầu.</p>
+                        </div>
+                    ) : (
+                        approvalWorkflows.filter(w => !w.effectiveTo).map((workflow, index) => {
+                            const contentTypeLabels: Record<string, string> = {
+                                'ATTENDANCE': '📋 Bảng Chấm Công',
+                                'EVALUATION': '📝 Phiếu Đánh Giá',
+                                'SALARY': '💰 Bảng Lương'
+                            };
+                            const targetRanks = salaryRanks.filter(r => workflow.targetRankIds.includes(r.id));
+                            const initiatorRoles = systemRoles.filter(r => workflow.initiatorRoleIds.includes(r.id));
+                            const approverRoles = systemRoles.filter(r => workflow.approverRoleIds.includes(r.id));
+                            const auditorRoles = systemRoles.filter(r => workflow.auditorRoleIds?.includes(r.id) || false);
+                            
+                            return (
+                                <div key={workflow.id} className="p-8 bg-slate-50 rounded-[40px] border border-slate-200 flex flex-col gap-6 relative group transition-all hover:bg-white hover:border-indigo-200 text-left">
+                                    <div className="flex items-center justify-between text-left">
+                                        <div className="flex items-center gap-4 text-left">
+                                            <div className="w-14 h-14 bg-indigo-600 text-white rounded-[24px] flex items-center justify-center font-black text-lg shrink-0 shadow-xl">#{index + 1}</div>
+                                            <div className="text-left">
+                                                <h4 className="font-black text-slate-800 text-lg tracking-tight text-left">{contentTypeLabels[workflow.contentType] || workflow.contentType}</h4>
+                                                <p className="text-xs text-slate-400 mt-1 text-left">Áp dụng từ: {new Date(workflow.effectiveFrom).toLocaleDateString('vi-VN')}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 text-left">
+                                            <button onClick={() => { setEditingWorkflow(workflow); setIsWorkflowModalOpen(true); }} className="p-3 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit size={18}/></button>
+                                            <button onClick={() => deleteApprovalWorkflow(workflow.id)} className="p-3 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={18}/></button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                                        <div className="p-4 bg-white rounded-2xl border border-slate-100 text-left">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase mb-2 text-left">Đối tượng (Rank)</p>
+                                            <div className="flex flex-wrap gap-2 text-left">
+                                                {targetRanks.length > 0 ? targetRanks.map(r => (
+                                                    <span key={r.id} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold">{r.name}</span>
+                                                )) : <span className="text-xs text-slate-400 italic">Tất cả các Rank</span>}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="p-4 bg-white rounded-2xl border border-slate-100 text-left">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase mb-2 text-left">Vai trò khởi tạo</p>
+                                            <div className="flex flex-wrap gap-2 text-left">
+                                                {initiatorRoles.map(r => (
+                                                    <span key={r.id} className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold">{r.name}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="p-4 bg-white rounded-2xl border border-slate-100 text-left">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase mb-2 text-left">Vai trò phê duyệt</p>
+                                            <div className="flex flex-wrap gap-2 text-left">
+                                                {approverRoles.map(r => (
+                                                    <span key={r.id} className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold">{r.name}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="p-4 bg-white rounded-2xl border border-slate-100 text-left">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase mb-2 text-left">Vai trò hậu kiểm</p>
+                                            <div className="flex flex-wrap gap-2 text-left">
+                                                {auditorRoles.length > 0 ? auditorRoles.map(r => (
+                                                    <span key={r.id} className="px-3 py-1 bg-purple-50 text-purple-600 rounded-lg text-xs font-bold">{r.name}</span>
+                                                )) : <span className="text-xs text-slate-400 italic">Không có</span>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })
                     )}
                 </div>
             </div>
@@ -366,6 +448,51 @@ const FormulaConfig: React.FC = () => {
         </div>
       </div>
       
+      {/* MODAL SYSTEM ROLE */}
+      {isRoleModalOpen && (
+        <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 text-left">
+          <form onSubmit={handleSaveRole} className="bg-white rounded-[40px] shadow-2xl w-full max-w-md animate-fade-in-up text-left overflow-hidden">
+            <div className="p-8 bg-purple-600 text-white flex justify-between items-center text-left">
+                <div className="flex items-center gap-4 text-left">
+                    <div className="p-3 bg-white/20 rounded-2xl shadow-lg"><ShieldCheck size={28}/></div>
+                    <h3 className="font-black text-xl tracking-tighter uppercase text-left">{editingRole ? 'Sửa Vai Trò' : 'Thêm Vai Trò Mới'}</h3>
+                </div>
+                <button type="button" onClick={() => { setIsRoleModalOpen(false); setEditingRole(null); }} className="hover:bg-white/10 p-2 rounded-full transition-all text-white"><X size={28}/></button>
+            </div>
+            <div className="p-10 space-y-8 text-left">
+                <div className="text-left">
+                    <label className="text-[11px] font-black text-slate-400 uppercase block mb-2 ml-1 tracking-widest text-left">Mã vai trò (Code)</label>
+                    <input name="code" required className="w-full px-6 py-4 border-2 border-slate-100 rounded-2xl font-black outline-none focus:border-purple-500 bg-slate-50 transition-all text-sm uppercase text-left" defaultValue={editingRole?.code} placeholder="VD: KE_TOAN_LUONG, QUAN_LY..."/>
+                    <p className="text-[9px] text-slate-400 mt-2 italic text-left">Mã vai trò phải viết hoa, dùng dấu gạch dưới</p>
+                </div>
+                <div className="text-left">
+                    <label className="text-[11px] font-black text-slate-400 uppercase block mb-2 ml-1 tracking-widest text-left">Tên vai trò</label>
+                    <input name="name" required className="w-full px-6 py-4 border-2 border-slate-100 rounded-2xl font-black outline-none focus:border-purple-500 bg-slate-50 transition-all text-sm text-left" defaultValue={editingRole?.name} placeholder="VD: Kế Toán Lương, Quản Lý..."/>
+                </div>
+                <div className="text-left">
+                    <label className="text-[11px] font-black text-slate-400 uppercase block mb-2 ml-1 tracking-widest text-left">Mô tả (Tùy chọn)</label>
+                    <textarea name="description" className="w-full px-6 py-4 border-2 border-slate-100 rounded-2xl font-medium outline-none focus:border-purple-500 bg-slate-50 transition-all text-sm text-left" rows={3} defaultValue={editingRole?.description} placeholder="Mô tả chức năng và quyền hạn của vai trò này..."/>
+                </div>
+            </div>
+            <div className="p-8 border-t flex justify-end gap-4 bg-slate-50 text-left">
+                <button type="button" onClick={() => { setIsRoleModalOpen(false); setEditingRole(null); }} className="px-10 py-4 font-black text-xs uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-all text-left">Bỏ qua</button>
+                <button type="submit" className="px-12 py-4 bg-purple-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl shadow-purple-500/20 hover:bg-purple-700 transition-all">Lưu Vai Trò</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL APPROVAL WORKFLOW */}
+      {isWorkflowModalOpen && (
+        <WorkflowModal
+          workflow={editingWorkflow}
+          systemRoles={systemRoles}
+          salaryRanks={salaryRanks}
+          onClose={() => { setIsWorkflowModalOpen(false); setEditingWorkflow(null); }}
+          onSave={handleSaveWorkflow}
+        />
+      )}
+
       {/* REASON MODAL FOR DELETE */}
       {reasonModal.isOpen && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-left">

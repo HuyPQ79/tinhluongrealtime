@@ -17,7 +17,8 @@ const SalarySheet: React.FC = () => {
     calculateMonthlySalary, canActionSalary, addSalaryAdjustment, 
     deleteSalaryAdjustment, systemConfig, allUsers, departments,
     pieceworkConfigs, dailyAttendance, evaluationRequests,
-    updateAdvancePayment, savePieceworkConfigs, showToast
+    updateAdvancePayment, savePieceworkConfigs, showToast,
+    systemRoles, approvalWorkflows
   } = useAppContext();
 
   const [activeTab, setActiveTab] = useState<'SUMMARY' | 'DETAILED_REPORT'>('SUMMARY');
@@ -82,10 +83,10 @@ const SalarySheet: React.FC = () => {
     if (!record) return;
     if (action === 'SUBMIT') {
         const beneficiary = allUsers.find(u => u.id === record.userId);
-        if (beneficiary) updateSalaryStatus(id, getNextPendingStatus(beneficiary, systemConfig.approvalWorkflow));
+        if (beneficiary) updateSalaryStatus(id, getNextPendingStatus(beneficiary, systemConfig.approvalWorkflow, RecordStatus.DRAFT, systemRoles, 'SALARY', approvalWorkflows));
     } else if (action === 'APPROVE') {
         const beneficiary = allUsers.find(u => u.id === record.userId);
-        if (beneficiary) updateSalaryStatus(id, getNextPendingStatus(beneficiary, systemConfig.approvalWorkflow, record.status));
+        if (beneficiary) updateSalaryStatus(id, getNextPendingStatus(beneficiary, systemConfig.approvalWorkflow, record.status, systemRoles, 'SALARY', approvalWorkflows));
     } else if (action === 'REJECT') {
         setRejectionModal({ id, isOpen: true });
     }

@@ -27,7 +27,8 @@ const Timekeeping: React.FC = () => {
     allUsers, departments, criteriaList, criteriaGroups, dailyWorkCatalog, 
     dailyAttendance, saveAttendance, updateAttendanceStatus, addEvaluationRequest, evaluationRequests, 
     approveEvaluationRequest, rejectEvaluationRequest, currentUser, canViewUser, formatDateTime,
-    addCriterion, getStandardWorkDays, systemConfig, salaryRecords, addNotification, showToast
+    addCriterion, getStandardWorkDays, systemConfig, salaryRecords, addNotification, showToast,
+    systemRoles, approvalWorkflows
   } = useAppContext();
   
   const [searchParams, setSearchParams] = useSearchParams();
@@ -69,7 +70,7 @@ const Timekeeping: React.FC = () => {
     if (!currentUser) return false;
     const user = allUsers.find(u => u.id === req.userId);
     const dept = departments.find(d => d.id === user?.currentDeptId || d.id === user?.sideDeptId);
-    return canApproveStatus(currentUser, req.status, dept, systemConfig.approvalWorkflow, departments);
+    return canApproveStatus(currentUser, req.status, dept, systemConfig.approvalWorkflow, departments, systemRoles, 'EVALUATION', approvalWorkflows);
   };
 
   const getStatusColor = (status?: RecordStatus) => {
@@ -292,7 +293,7 @@ const Timekeeping: React.FC = () => {
         const user = allUsers.find(u => u.id === r.userId);
         const dept = departments.find(d => d.id === user?.currentDeptId || d.id === user?.sideDeptId);
         
-        if (canApproveStatus(currentUser, r.status, dept, systemConfig.approvalWorkflow, departments)) {
+        if (canApproveStatus(currentUser, r.status, dept, systemConfig.approvalWorkflow, departments, systemRoles, 'ATTENDANCE', approvalWorkflows)) {
             canApproveCount++;
             if (r.status !== RecordStatus.DRAFT && r.status !== RecordStatus.APPROVED) {
                 canRejectCount++;
@@ -338,23 +339,17 @@ const Timekeeping: React.FC = () => {
 
         const user = allUsers.find(u => u.id === record.userId);
         const dept = departments.find(d => d.id === user?.currentDeptId || d.id === user?.sideDeptId);
-        const hasPermission = canApproveStatus(currentUser!, record.status, dept, systemConfig.approvalWorkflow, departments);
+        const hasPermission = canApproveStatus(currentUser!, record.status, dept, systemConfig.approvalWorkflow, departments, systemRoles, 'ATTENDANCE', approvalWorkflows);
 
         if (action === 'SUBMIT' && record.status === RecordStatus.DRAFT) {
-            record.status = RecordStatus.PENDING_MANAGER;
+            const nextStatus = getNextPendingStatus(user!, systemConfig.approvalWorkflow, RecordStatus.DRAFT, systemRoles, 'ATTENDANCE', approvalWorkflows);
+            record.status = nextStatus;
+            if (nextStatus === RecordStatus.PENDING_HR) record.sentToHrAt = new Date().toISOString();
             recordsToUpdate.push(record);
         } else if (action === 'APPROVE' && hasPermission) {
-            if (record.status === RecordStatus.PENDING_MANAGER) {
-                record.status = RecordStatus.PENDING_HR;
-                record.sentToHrAt = new Date().toISOString();
-            }
-            else if (record.status === RecordStatus.PENDING_HR) {
-                record.status = RecordStatus.APPROVED;
-            }
-            else {
-                const nextStatus = getNextPendingStatus(user!, systemConfig.approvalWorkflow, record.status);
-                record.status = nextStatus;
-            }
+            const nextStatus = getNextPendingStatus(user!, systemConfig.approvalWorkflow, record.status, systemRoles, 'ATTENDANCE', approvalWorkflows);
+            record.status = nextStatus;
+            if (nextStatus === RecordStatus.PENDING_HR) record.sentToHrAt = new Date().toISOString();
             recordsToUpdate.push(record);
         } else if (action === 'REJECT' && hasPermission) {
             if (record.status !== RecordStatus.DRAFT && record.status !== RecordStatus.APPROVED) {
@@ -392,7 +387,7 @@ const Timekeeping: React.FC = () => {
       const user = allUsers.find(u => u.id === userId);
       
       if (action === 'APPROVE') {
-          updated.status = getNextPendingStatus(user!, systemConfig.approvalWorkflow, updated.status);
+          updated.status = getNextPendingStatus(user!, systemConfig.approvalWorkflow, updated.status, systemRoles, 'ATTENDANCE', approvalWorkflows);
           if (updated.status === RecordStatus.PENDING_HR) updated.sentToHrAt = new Date().toISOString();
       } else {
           updated.status = RecordStatus.DRAFT;
@@ -421,7 +416,7 @@ const Timekeeping: React.FC = () => {
             description: evalForm.description || '',
             proofFileName: evalForm.proofFileName || '',
             requesterId: currentUser?.id || '',
-            status: getNextPendingStatus(user!, systemConfig.approvalWorkflow),
+            status: getNextPendingStatus(user!, systemConfig.approvalWorkflow, RecordStatus.DRAFT, systemRoles, 'EVALUATION', approvalWorkflows),
             createdAt: new Date().toISOString()
         };
     } else {
@@ -440,7 +435,7 @@ const Timekeeping: React.FC = () => {
           description: evalForm.description || '',
           proofFileName: evalForm.proofFileName || '',
           requesterId: currentUser?.id || '',
-          status: getNextPendingStatus(user!, systemConfig.approvalWorkflow),
+          status: getNextPendingStatus(user!, systemConfig.approvalWorkflow, RecordStatus.DRAFT, systemRoles, 'EVALUATION', approvalWorkflows),
           createdAt: new Date().toISOString()
         };
     }
@@ -655,7 +650,7 @@ const Timekeeping: React.FC = () => {
                           {currentDeptUsers.map(u => {
                               const buffer = attendanceBuffer[u.id] || {};
                               const dept = departments.find(d => d.id === u.currentDeptId || d.id === u.sideDeptId);
-                              const hasPermission = canApproveStatus(currentUser!, buffer.status || RecordStatus.DRAFT, dept, systemConfig.approvalWorkflow, departments);
+                              const hasPermission = canApproveStatus(currentUser!, buffer.status || RecordStatus.DRAFT, dept, systemConfig.approvalWorkflow, departments, systemRoles, 'ATTENDANCE', approvalWorkflows);
 
                               return (
                                   <tr key={u.id} className="hover:bg-slate-50/80 text-center transition-colors">
