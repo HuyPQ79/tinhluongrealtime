@@ -105,6 +105,28 @@ export interface ApprovalStep {
   condition?: 'ALL' | 'PRODUCTION_ONLY' | 'OFFICE_ONLY';
 }
 
+// System Role - quản lý vai trò trong hệ thống
+export interface SystemRole {
+  id: string;
+  code: string; // ADMIN, QUAN_LY, etc.
+  name: string;
+  description?: string;
+}
+
+// Approval Workflow mới với cấu trúc phức tạp
+export interface ApprovalWorkflow {
+  id: string;
+  contentType: 'ATTENDANCE' | 'EVALUATION' | 'SALARY'; // Nội dung cần phê duyệt
+  targetRankIds: string[]; // Đối tượng áp dụng (từ SalaryRank) - chọn nhiều
+  initiatorRoleIds: string[]; // Vai trò khởi tạo - chọn nhiều
+  approverRoleIds: string[]; // Vai trò phê duyệt - chọn nhiều
+  auditorRoleIds?: string[]; // Vai trò hậu kiểm - chọn nhiều
+  effectiveFrom: string; // Thời điểm bắt đầu áp dụng (snapshot)
+  effectiveTo?: string; // null nếu đang active
+  version: number;
+  createdAt: string;
+}
+
 export interface SystemConfig {
   isPeriodLocked: boolean;
   autoApproveDays: number; 
@@ -116,8 +138,9 @@ export interface SystemConfig {
   unionFeeRate: number;        
   maxInsuranceBase: number;    
   pitSteps: PitStep[];
-  approvalWorkflow: ApprovalStep[]; 
+  approvalWorkflow: ApprovalStep[]; // Legacy - giữ để tương thích
   seniorityRules: SeniorityRule[];
+  systemRoles?: SystemRole[]; // Danh sách vai trò hệ thống
   lastModifiedBy?: string;
   lastModifiedAt?: string;
   hasPendingChanges?: boolean;

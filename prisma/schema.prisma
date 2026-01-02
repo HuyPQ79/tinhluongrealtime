@@ -217,9 +217,26 @@ model SystemConfig {
   pitSteps            Json?
   seniorityRules      Json?
   insuranceRules      Json?
+  systemRoles         Json?    // Danh sách vai trò hệ thống [{id, code, name, description}]
   updatedAt           DateTime @updatedAt
   
   @@map("system_configs")
+}
+
+// Luồng phê duyệt với snapshot
+model ApprovalWorkflow {
+  id               String   @id @default(cuid())
+  contentType      String   // ATTENDANCE, EVALUATION, SALARY
+  targetRankIds    Json     // [rankId1, rankId2, ...] - Đối tượng áp dụng (từ SalaryRank)
+  initiatorRoleIds Json     // [roleId1, roleId2, ...] - Vai trò khởi tạo
+  approverRoleIds  Json     // [roleId1, roleId2, ...] - Vai trò phê duyệt
+  auditorRoleIds   Json?    // [roleId1, roleId2, ...] - Vai trò hậu kiểm
+  effectiveFrom    DateTime @default(now()) // Thời điểm bắt đầu áp dụng (snapshot)
+  effectiveTo      DateTime? // null nếu đang active
+  version          Int      @default(1)
+  createdAt        DateTime @default(now())
+  
+  @@map("approval_workflows")
 }
 
 // ==========================================
@@ -357,9 +374,12 @@ model SalaryRecord {
 
 model AuditLog {
   id             String   @id @default(cuid())
-  action         String
-  actor          String
+  action         String   // Loại hành động (CREATE_USER, UPDATE_SALARY, APPROVE_ATTENDANCE, etc.)
+  actor          String   // Người thực hiện
+  actorId        String?  // ID của người thực hiện (để query dễ hơn)
   details        String   @db.Text
+  entityType     String?  // Loại entity (USER, ATTENDANCE, SALARY, EVALUATION, CONFIG, etc.)
+  entityId       String?  // ID của entity (để query dễ hơn)
   timestamp      DateTime @default(now())
   isConfigAction Boolean  @default(false)
   @@map("audit_logs")

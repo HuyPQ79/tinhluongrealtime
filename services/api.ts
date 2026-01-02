@@ -204,5 +204,22 @@ export const api = {
             method: 'PUT', 
             body: JSON.stringify({ amount }) 
         });
+    },
+
+    // ==================================================
+    // 7. APPROVAL WORKFLOW
+    // ==================================================
+    async getApprovalWorkflows(contentType?: string, activeOnly?: boolean) {
+        const params = new URLSearchParams();
+        if (contentType) params.append('contentType', contentType);
+        if (activeOnly) params.append('activeOnly', 'true');
+        const query = params.toString() ? `?${params.toString()}` : '';
+        return await request(`/approval-workflows${query}`);
+    },
+    async saveApprovalWorkflow(workflow: any) {
+        return await request('/approval-workflows', { 
+            method: 'POST', 
+            body: JSON.stringify(workflow) 
+        });
     }
 };

@@ -419,14 +419,17 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   // --- LOGS & NOTIFICATIONS ---
-  const addAuditLog = async (action: string, details: string) => {
+  const addAuditLog = async (action: string, details: string, entityType?: string, entityId?: string) => {
       const log: AuditLog = { 
         id: `LOG${Date.now()}`, 
         action, 
-        actor: currentUser?.name || 'System', 
+        actor: currentUser?.name || 'System',
+        actorId: currentUser?.id,
         timestamp: new Date().toISOString(), 
         details,
-        isConfigAction: action.includes('CONFIG') || action.includes('FORMULA') || action.includes('VARIABLE')
+        entityType,
+        entityId,
+        isConfigAction: action.includes('CONFIG') || action.includes('FORMULA') || action.includes('VARIABLE') || action.includes('WORKFLOW') || action.includes('ROLE')
       };
       try {
         await api.saveLog(log);
