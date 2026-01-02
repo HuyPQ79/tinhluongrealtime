@@ -366,12 +366,15 @@ export interface AuditLog {
 
 export interface SalaryFormula {
     id: string;
+    code?: string; // Mã công thức (F1, F2...)
     name: string;
+    area?: string; // OFFICE, FACTORY, ALL
     targetField: string;
     formulaExpression: string;
     isActive: boolean;
     order: number;
     description: string;
+    group?: string; // Nhóm công thức
 }
 
 export interface DailyWorkItem {

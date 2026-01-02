@@ -83,7 +83,7 @@ export const INITIAL_FORMULAS = [
   // F6 và F7 sẽ được xử lý đặc biệt (thuế TNCN và Net) - không dùng formula engine
 ];
 
-const INITIAL_SALARY_VARIABLES = [
+export const INITIAL_SALARY_VARIABLES = [
   // NHÓM CÔNG
   { code: 'Ctc', name: 'Công tiêu chuẩn', description: 'Tổng ngày trong tháng trừ Chủ nhật', group: 'CÔNG' },
   { code: 'Ctt', name: 'Công thực tế', description: 'Tổng công thời gian hoặc công khoán', group: 'CÔNG' },

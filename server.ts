@@ -181,17 +181,17 @@ async function initDatabase() {
         const config = await prisma.systemConfig.findUnique({ where: { id: "default_config" } });
         if (!config) {
             await prisma.systemConfig.create({
-                data: { 
+                data:                 {
                     id: "default_config", 
                     baseSalary: 1800000, 
                     standardWorkDays: 26, 
                     insuranceBaseSalary: 1800000, 
                     maxInsuranceBase: 36000000,
-                    maxHoursForHRReview: 72,
+                    maxHoursForHRReview: 72 as any,
                     pitSteps: [],
                     seniorityRules: [],
                     insuranceRules: {}
-                }
+                } as any
             });
         }
         
@@ -1335,11 +1335,22 @@ app.post('/api/salary-records/calculate', async (req: AuthRequest, res) => {
       
       // Build variable context (cần CO_tc và TR_tc đã tính)
       const varContext = buildVariableContext(
-        user,
-        grade,
-        userAttendance,
-        userEvaluations,
-        systemConfig!,
+        {
+          ...user,
+          joinDate: user.joinDate instanceof Date ? user.joinDate.toISOString() : user.joinDate
+        } as any,
+        grade ? {
+          ...grade,
+          baseSalary: Number(grade.baseSalary),
+          efficiencySalary: Number(grade.efficiencySalary),
+          fixedAllowance: Number(grade.fixedAllowance),
+          flexibleAllowance: Number(grade.flexibleAllowance),
+          otherSalary: Number(grade.otherSalary),
+          amount: Number(grade.amount)
+        } as any : undefined,
+        userAttendance as any,
+        userEvaluations as any,
+        systemConfig! as any,
         {
           Ctc, Ctt, Cn, NCD, NL, NCL, NKL, NCV, SL_tt,
           LCB_dm, LHQ_dm, LSL_dm, SL_khoan, DG_khoan,
@@ -1421,6 +1432,27 @@ app.post('/api/salary-records/calculate', async (req: AuthRequest, res) => {
           Ltc += att.overtimeHours * (LCB_dm / Ctc / 8) * (att.otRate || 1.5);
         }
       }
+      
+      // Tính Lncl (Lương nghỉ có lương) - Sử dụng Formula Engine nếu có
+      let Lncl = 0;
+      const formulaForLncl = formulas.find(f => f.targetField === 'Lncl');
+      if (formulaForLncl) {
+        const result = evaluateFormula(formulaForLncl.expression, resolvedVars);
+        if (result.error) {
+          console.error(`Error evaluating formula F5 for user ${user.id}:`, result.error);
+          // Fallback: (NCD + NL + NCL) * (LCB_dm / Ctc) + (NCV * LCB_dm / Ctc * 0.7)
+          Lncl = (NCD + NL + NCL) * (LCB_dm / Ctc) + (NCV * LCB_dm / Ctc * 0.7);
+        } else {
+          Lncl = result.value;
+        }
+      } else {
+        // Fallback to hardcoded logic
+        Lncl = (NCD + NL + NCL) * (LCB_dm / Ctc) + (NCV * LCB_dm / Ctc * 0.7);
+      }
+      
+      // Cập nhật resolvedVars với Lncl đã tính
+      resolvedVars.Lncl = Lncl;
+      resolvedVars.lncl = Lncl;
       
       // Tính Lk (otherSalary) - Sử dụng Formula Engine nếu có
       let Lk = 0;
