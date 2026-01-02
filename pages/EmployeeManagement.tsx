@@ -17,7 +17,8 @@ const EmployeeManagement: React.FC = () => {
     allUsers, departments, salaryRanks, salaryGrids, 
     addUser, updateUser, deleteUser, approveUserUpdate, rejectUserUpdate,
     addDept, updateDept, deleteDept,
-    addAuditLog, currentUser, bulkAddUsers, showToast
+    addAuditLog, currentUser, bulkAddUsers, showToast,
+    systemRoles
   } = useAppContext();
   
   const [activeTab, setActiveTab] = useState<'USERS' | 'DEPARTMENTS'>('USERS');
@@ -89,7 +90,7 @@ const EmployeeManagement: React.FC = () => {
           avatar: `https://ui-avatars.com/api/?name=New+User&background=6366f1&color=fff`,
           joinDate: new Date().toISOString().split('T')[0],
           status: UserStatus.PROBATION,
-          roles: [UserRole.NHAN_VIEN],
+          roles: systemRoles.find(r => r.code === 'NHAN_VIEN')?.code ? [systemRoles.find(r => r.code === 'NHAN_VIEN')!.code] : (systemRoles.length > 0 ? [systemRoles[0].code] : ['NHAN_VIEN']),
           numberOfDependents: 0,
           salaryHistory: [],
           assignedDeptIds: [],
@@ -111,14 +112,14 @@ const EmployeeManagement: React.FC = () => {
       setIsUserModalOpen(true);
   };
 
-  const toggleRole = (role: UserRole) => {
+  const toggleRole = (roleCode: string) => {
     if (!editingUser) return;
     const currentRoles = [...editingUser.roles];
-    const index = currentRoles.indexOf(role);
+    const index = currentRoles.indexOf(roleCode);
     if (index > -1) {
         if (currentRoles.length > 1) currentRoles.splice(index, 1);
     } else {
-        currentRoles.push(role);
+        currentRoles.push(roleCode);
     }
     setEditingUser({ ...editingUser, roles: currentRoles });
   };
@@ -288,7 +289,7 @@ const EmployeeManagement: React.FC = () => {
                   avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(row["Họ Tên"])}&background=random&color=fff`,
                   joinDate: row["Ngày vào"] || new Date().toISOString().split('T')[0],
                   status: (row["Trạng thái"] as UserStatus) || UserStatus.ACTIVE,
-                  roles: [UserRole.NHAN_VIEN],
+                  roles: systemRoles.find(r => r.code === 'NHAN_VIEN')?.code ? [systemRoles.find(r => r.code === 'NHAN_VIEN')!.code] : (systemRoles.length > 0 ? [systemRoles[0].code] : ['NHAN_VIEN']),
                   numberOfDependents: Number(row["Số người phụ thuộc"] || row["Người phụ thuộc"] || 0),
                   salaryHistory: [],
                   assignedDeptIds: [],
@@ -638,14 +639,23 @@ const EmployeeManagement: React.FC = () => {
                     <div className="md:col-span-2 space-y-6">
                         <div className="bg-white p-6 rounded-2xl border space-y-4 text-left shadow-sm">
                             <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><ShieldCheck size={16} className="text-indigo-500"/> Vai trò hệ thống</h4>
-                            <div className="grid grid-cols-2 gap-3">
-                                {Object.values(UserRole).map(role => (
-                                    <label key={role} className={`flex items-center gap-2 p-2.5 border rounded-xl hover:bg-slate-50 cursor-pointer transition-all ${editingUser.roles.includes(role) ? 'bg-indigo-50 border-indigo-200' : ''}`}>
-                                        <input type="checkbox" className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500" checked={editingUser.roles.includes(role)} onChange={() => toggleRole(role)}/>
-                                        <span className="text-[10px] font-bold text-slate-600">{role.replace('_', ' ')}</span>
-                                    </label>
-                                ))}
-                            </div>
+                            {systemRoles.length === 0 ? (
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                                    <p className="text-xs text-amber-700 font-bold">Chưa có vai trò nào. Vui lòng tạo vai trò trong "Cấu hình hệ thống" → "Vai trò" trước.</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-3">
+                                    {systemRoles.map(role => (
+                                        <label key={role.id} className={`flex items-center gap-2 p-2.5 border rounded-xl hover:bg-slate-50 cursor-pointer transition-all ${editingUser.roles.includes(role.code) ? 'bg-indigo-50 border-indigo-200' : ''}`}>
+                                            <input type="checkbox" className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500" checked={editingUser.roles.includes(role.code)} onChange={() => toggleRole(role.code)}/>
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-bold text-slate-600">{role.name}</span>
+                                                <span className="text-[8px] text-slate-400 font-mono">{role.code}</span>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                   </div>

@@ -235,8 +235,11 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
         if (Array.isArray(auditRes)) setAuditLogs(auditRes);
         
         // Load SystemRoles từ systemConfig.systemRoles
-        if (configRes?.systemRoles && Array.isArray(configRes.systemRoles)) {
+        if (configRes?.systemRoles && Array.isArray(configRes.systemRoles) && configRes.systemRoles.length > 0) {
           setSystemRoles(configRes.systemRoles);
+        } else {
+          // Nếu chưa có systemRoles, để mảng rỗng - server sẽ tự động seed khi khởi động
+          setSystemRoles([]);
         }
         
         // Load ApprovalWorkflows
