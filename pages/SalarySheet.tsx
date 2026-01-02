@@ -22,24 +22,51 @@ const printStyles = `
     body * {
       visibility: hidden;
     }
-    .printable-area, .printable-area * {
-      visibility: visible;
-    }
     .printable-area {
       position: absolute;
       left: 0;
       top: 0;
       width: 100%;
-      background: white;
+      min-height: 100%;
+      background: white !important;
       padding: 1cm;
+    }
+    .printable-area * {
+      visibility: visible !important;
     }
     .no-print, .no-print * {
       display: none !important;
+      visibility: hidden !important;
     }
-    .print-only {
+    /* Ẩn tab DETAIL khi in - sử dụng selector đơn giản hơn */
+    .printable-area > div > div > div:not(.print-tab-content) {
+      display: none !important;
+    }
+    /* Chỉ hiển thị tab PRINT */
+    .print-tab-content {
       display: block !important;
+      visibility: visible !important;
     }
-    .print-only table {
+    .print-tab-content * {
+      visibility: visible !important;
+    }
+    .print-tab-content table {
+      display: table !important;
+      visibility: visible !important;
+    }
+    .print-tab-content tr {
+      display: table-row !important;
+      visibility: visible !important;
+    }
+    .print-tab-content td,
+    .print-tab-content th {
+      display: table-cell !important;
+      visibility: visible !important;
+    }
+    table {
+      page-break-inside: avoid;
+    }
+    tr {
       page-break-inside: avoid;
     }
   }
@@ -1038,7 +1065,7 @@ const SalarySheet: React.FC = () => {
                       
                       {/* TAB: PHIẾU IN A4 */}
                       {detailModalTab === 'PRINT' && (
-                        <div className="space-y-6">
+                        <div className="space-y-6 print-tab-content">
                           {/* Nút In */}
                           <div className="flex justify-end mb-4 no-print">
                             <button onClick={() => window.print()} className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center gap-3 transition-all shadow-xl">
@@ -1052,10 +1079,6 @@ const SalarySheet: React.FC = () => {
                                   <div className="text-left">
                                       <h1 className="text-xl font-black uppercase tracking-tighter">PHIẾU LƯƠNG THỰC LĨNH</h1>
                                       <p className="text-sm font-bold text-slate-600 mt-1">Kỳ thanh toán: {detailedRecord.date}</p>
-                                  </div>
-                                  <div className="text-right">
-                                      <p className="font-black text-sm">THIEN SON GROUP</p>
-                                      <p className="text-[10px] text-slate-500 italic">Xác thực hệ thống nội bộ</p>
                                   </div>
                               </div>
                               <div className="grid grid-cols-2 gap-3 text-xs">
