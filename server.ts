@@ -272,10 +272,17 @@ const createCrud = (
           let updateData: any = data;
           let createData: any = data;
           
-          if (modelName === 'evaluationRequest' && data.createdAt) {
-            const { createdAt, ...dataWithoutCreatedAt } = data;
-            updateData = { ...dataWithoutCreatedAt, createdAt: new Date(createdAt) };
-            createData = dataWithoutCreatedAt; // Không set createdAt trong create, để DB tự động set
+          if (modelName === 'evaluationRequest') {
+            // Loại bỏ user object nếu có (chỉ cần userId)
+            const { user, createdAt, ...dataWithoutUser } = data;
+            
+            if (createdAt) {
+              updateData = { ...dataWithoutUser, createdAt: new Date(createdAt) };
+              createData = dataWithoutUser; // Không set createdAt trong create, để DB tự động set
+            } else {
+              updateData = dataWithoutUser;
+              createData = dataWithoutUser;
+            }
           }
           
           const item = await model.upsert({
@@ -455,13 +462,19 @@ createCrud('evaluationRequest', ['evaluations'], {
   },
   mapIn: (body: any) => {
     // Loại bỏ các field không tồn tại trong DB schema
-    const { userName, ...dbData } = body;
+    const { userName, user, ...dbData } = body;
+    // Sửa typo nếu có
+    if (dbData.criteriald && !dbData.criteriaId) {
+      dbData.criteriaId = dbData.criteriald;
+      delete dbData.criteriald;
+    }
     return {
       ...dbData,
       description: dbData.description || '',
       proofFileName: dbData.proofFileName || '',
       scope: dbData.scope || 'MAIN_JOB',
       // createdAt sẽ được xử lý riêng trong upsert
+      // userId phải có, không được có user object
     };
   },
 });
