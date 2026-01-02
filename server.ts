@@ -43,6 +43,37 @@ const PORT = parseInt(process.env.PORT || '8080');
 const JWT_SECRET = process.env.JWT_SECRET || 'hrm-super-secret-key';
 const prisma = new PrismaClient();
 
+// === AUDIT LOG HELPER ===
+async function createAuditLog(
+  action: string,
+  actor: string,
+  actorId: string | undefined,
+  details: string,
+  entityType?: string,
+  entityId?: string
+) {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        action,
+        actor: actor || 'System',
+        actorId: actorId || undefined,
+        details,
+        entityType: entityType || undefined,
+        entityId: entityId || undefined,
+        isConfigAction: action.includes('CONFIG') || action.includes('FORMULA') || 
+                       action.includes('VARIABLE') || action.includes('WORKFLOW') || 
+                       action.includes('ROLE') || action.includes('CRITERIA') ||
+                       action.includes('DEPARTMENT') || action.includes('RANK') ||
+                       action.includes('GRADE')
+      }
+    });
+  } catch (error) {
+    console.error('Error creating audit log:', error);
+    // Không throw error để không làm gián đoạn flow chính
+  }
+}
+
 // === AUTHENTICATION MIDDLEWARE ===
 interface AuthRequest extends express.Request {
   currentUser?: any;
@@ -414,7 +445,7 @@ createCrud('evaluationRequest', ['evaluations'], {
 // ==========================================
 // API USER (FIX LỖI JOINDATE & 500 ERROR)
 // ==========================================
-app.post('/api/users', async (req, res) => {
+app.post('/api/users', async (req: AuthRequest, res) => {
   try {
     const raw = req.body;
     console.log("--> User Data Raw:", JSON.stringify(raw));
@@ -537,7 +568,7 @@ app.post('/api/users', async (req, res) => {
         
         // Ghi audit log
         try {
-            const actor = req.currentUser?.name || 'System';
+            const actor = (req as AuthRequest).currentUser?.name || 'System';
             await prisma.auditLog.create({
                 data: {
                     action: 'CREATE_USER',
@@ -645,9 +676,10 @@ app.get('/api/config/system', async (req, res) => {
   }
 });
 
-app.post('/api/config/system', async (req, res) => {
+app.post('/api/config/system', async (req: AuthRequest, res) => {
   try {
     const body = req.body || {};
+    const currentUser = req.currentUser;
     const known = {
       id: 'default_config',
       baseSalary: body.baseSalary ?? 0,
@@ -680,6 +712,23 @@ app.post('/api/config/system', async (req, res) => {
       update: known,
       create: known,
     });
+    
+    // Ghi audit log
+    const configChanges = [];
+    if (body.baseSalary !== undefined) configChanges.push(`Lương cơ bản: ${body.baseSalary.toLocaleString('vi-VN')}`);
+    if (body.standardWorkDays !== undefined) configChanges.push(`Ngày công chuẩn: ${body.standardWorkDays}`);
+    if (body.systemRoles !== undefined) configChanges.push(`Vai trò hệ thống: ${Array.isArray(body.systemRoles) ? body.systemRoles.length : 0} vai trò`);
+    if (body.maxHoursForHRReview !== undefined) configChanges.push(`Số giờ tối đa HR hậu kiểm: ${body.maxHoursForHRReview}`);
+    
+    await createAuditLog(
+      'UPDATE_CONFIG',
+      currentUser?.name || 'System',
+      currentUser?.id,
+      `Cập nhật cấu hình hệ thống: ${configChanges.length > 0 ? configChanges.join(', ') : 'Các thay đổi khác'}`,
+      'CONFIG',
+      'default_config'
+    );
+    
     res.json({ success: true, id: cfg.id });
   } catch (e: any) {
     res.status(500).json({ message: e.message || 'Lỗi lưu cấu hình' });
@@ -829,7 +878,7 @@ app.get('/api/users', async (req: AuthRequest, res) => {
     }
 });
 
-app.delete('/api/users/:id', async (req, res) => {
+app.delete('/api/users/:id', async (req: AuthRequest, res) => {
     try {
         const userId = req.params.id;
         
@@ -844,7 +893,7 @@ app.delete('/api/users/:id', async (req, res) => {
         
         // Ghi audit log
         try {
-            const actor = req.currentUser?.name || 'System';
+            const actor = (req as AuthRequest).currentUser?.name || 'System';
             await prisma.auditLog.create({
                 data: {
                     action: 'DELETE_USER',
@@ -1155,9 +1204,10 @@ function calculateCtc(year: number, month: number): number {
 }
 
 // Endpoint tính lương tự động
-app.post('/api/salary-records/calculate', async (req, res) => {
+app.post('/api/salary-records/calculate', async (req: AuthRequest, res) => {
   try {
     const { month } = req.query; // YYYY-MM
+    const currentUser = req.currentUser;
     if (!month || typeof month !== 'string') {
       return res.status(400).json({ message: 'Thiếu tham số month (YYYY-MM)' });
     }
@@ -1236,14 +1286,60 @@ app.post('/api/salary-records/calculate', async (req, res) => {
       // Tính LCB_tt
       const actualBaseSalary = (LCB_dm / Ctc) * Ctt;
       
-      // Tính LHQ_tt hoặc LSL_tt
+      // Tính KPI từ evaluations đã APPROVED trong tháng
+      const userEvaluations = evaluations.filter(
+        e => e.userId === user.id && 
+        e.target === 'MONTHLY_SALARY'
+      );
+      
+      let CO_tc = 0;
+      let TR_tc = 0;
+      
+      // Đếm số lần vi phạm theo criteriaId để xử lý threshold
+      const criteriaCounts: Record<string, number> = {};
+      const sortedEvals = [...userEvaluations].sort((a, b) => 
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+      
+      for (const evalReq of sortedEvals) {
+        const criteria = criteriaList.find(c => c.id === evalReq.criteriaId);
+        const group = criteriaGroups.find(g => g.id === criteria?.groupId);
+        
+        if (!criteria || !group) continue;
+        
+        criteriaCounts[evalReq.criteriaId] = (criteriaCounts[evalReq.criteriaId] || 0) + 1;
+        
+        // Bỏ qua nếu chưa vượt threshold (chỉ áp dụng cho PENALTY)
+        if (evalReq.type === 'PENALTY' && criteria.threshold > 0) {
+          if (criteriaCounts[evalReq.criteriaId] <= criteria.threshold) {
+            continue; // Bỏ qua lần này
+          }
+        }
+        
+        // Tính điểm KPI = (criteria.value / 100) * (group.weight / 100)
+        const kpiPoint = (Number(criteria.value || 0) / 100) * (Number(group.weight || 0) / 100);
+        
+        if (evalReq.type === 'BONUS') {
+          CO_tc += kpiPoint;
+        } else {
+          TR_tc += kpiPoint;
+        }
+      }
+      
+      // Tính LHQ_tt hoặc LSL_tt với KPI
       let actualEfficiencySalary = 0;
       let actualPieceworkSalary = 0;
       
       if (user.paymentType === 'PIECEWORK') {
-        actualPieceworkSalary = (LSL_dm / Ctc) * Ctt;
+        // LSL_tt = (LSL_dm / Ctc) * Ctt + (CO_tc - TR_tc) * LSL_dm
+        const base = (LSL_dm / Ctc) * Ctt;
+        const kpiAdjustment = (CO_tc - TR_tc) * LSL_dm;
+        actualPieceworkSalary = base + kpiAdjustment;
       } else {
-        actualEfficiencySalary = (LHQ_dm / Ctc) * Ctt;
+        // LHQ_tt = (LHQ_dm / Ctc) * Ctt + (CO_tc - TR_tc) * LHQ_dm
+        const base = (LHQ_dm / Ctc) * Ctt;
+        const kpiAdjustment = (CO_tc - TR_tc) * LHQ_dm;
+        actualEfficiencySalary = base + kpiAdjustment;
       }
       
       // Tính Lương Khác (Lcn + Ltc + Lncl)
@@ -1319,6 +1415,11 @@ app.post('/api/salary-records/calculate', async (req, res) => {
         Ltc,
         Lncl,
         Lk,
+        paymentType: user.paymentType,
+        total_CO_tc: CO_tc,
+        total_TR_tc: TR_tc,
+        CO_tc,
+        TR_tc,
       };
       
       // Lưu vào database
@@ -1411,15 +1512,18 @@ app.post('/api/salary-records/calculate', async (req, res) => {
 // ==========================================
 
 // Thêm điều chỉnh vào salary record
-app.post('/api/salary-records/:id/adjustments', async (req, res) => {
+app.post('/api/salary-records/:id/adjustments', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const adjustment = req.body;
+    const currentUser = req.currentUser;
     
     const record = await prisma.salaryRecord.findUnique({ where: { id } });
     if (!record) {
       return res.status(404).json({ message: 'Không tìm thấy bảng lương' });
     }
+    
+    const adjUserName = await prisma.user.findUnique({ where: { id: record.userId }, select: { name: true } });
     
     const adjustments = (record.adjustments as any) || [];
     const newAdjustment = {
@@ -1442,8 +1546,8 @@ app.post('/api/salary-records/:id/adjustments', async (req, res) => {
       if (adj.type === 'OTHER_DEDUCTION') otherDeductionsAdj += adj.amount;
     }
     
-    const user = await prisma.user.findUnique({ where: { id: record.userId } });
-    const gradeData = user?.currentGradeId ? await prisma.salaryGrade.findUnique({ where: { id: user.currentGradeId } }) : null;
+    const adjUserFull = await prisma.user.findUnique({ where: { id: record.userId } });
+    const gradeData = adjUserFull?.currentGradeId ? await prisma.salaryGrade.findUnique({ where: { id: adjUserFull.currentGradeId } }) : null;
     const PC_cd = Number(gradeData?.fixedAllowance || 0);
     
     // Tính lại totalBonus từ fixed bonuses + adjustments
@@ -1476,7 +1580,7 @@ app.post('/api/salary-records/:id/adjustments', async (req, res) => {
     const insuranceDeduction = insuranceBase * (insuranceRate / 100);
     const unionFee = insuranceBase * (unionFeeRate / 100);
     
-    const TN_ct = calculatedSalary - insuranceDeduction - unionFee - personalRelief - (dependentRelief * (user?.numberOfDependents || 0));
+    const TN_ct = calculatedSalary - insuranceDeduction - unionFee - personalRelief - (dependentRelief * (adjUserFull?.numberOfDependents || 0));
     let pitDeduction = 0;
     if (TN_ct > 0) {
       const sortedSteps = [...pitSteps].sort((a: any, b: any) => a.threshold - b.threshold);
@@ -1490,7 +1594,7 @@ app.post('/api/salary-records/:id/adjustments', async (req, res) => {
     }
     
     const advancePayment = Number(record.advancePayment || 0);
-    const netSalary = (calculatedSalary - insuranceDeduction - unionFee - pitDeduction - advancePayment - otherDeductionsAdj) * ((user?.probationRate || 100) / 100);
+    const netSalary = (calculatedSalary - insuranceDeduction - unionFee - pitDeduction - advancePayment - otherDeductionsAdj) * ((adjUserFull?.probationRate || 100) / 100);
     
     const updated = await prisma.salaryRecord.update({
       where: { id },
@@ -1679,15 +1783,18 @@ app.put('/api/salary-records/:id/advance-payment', async (req, res) => {
 });
 
 // Cập nhật trạng thái bảng lương (approve/reject)
-app.put('/api/salary-records/:id/status', async (req, res) => {
+app.put('/api/salary-records/:id/status', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { status, rejectionReason } = req.body;
+    const currentUser = req.currentUser;
     
     const record = await prisma.salaryRecord.findUnique({ where: { id } });
     if (!record) {
       return res.status(404).json({ message: 'Không tìm thấy bảng lương' });
     }
+    
+    const salaryUser = await prisma.user.findUnique({ where: { id: record.userId }, select: { name: true } });
     
     const updateData: any = { status };
     if (status === 'REJECTED' && rejectionReason) {
@@ -1701,6 +1808,31 @@ app.put('/api/salary-records/:id/status', async (req, res) => {
       where: { id },
       data: updateData,
     });
+    
+    // Ghi audit log
+    let action = 'UPDATE_SALARY_STATUS';
+    let details = '';
+    if (status === 'APPROVED') {
+      action = 'APPROVE_SALARY';
+      details = `Phê duyệt bảng lương cho ${salaryUser?.name || record.userId} tháng ${record.date}`;
+    } else if (status === 'REJECTED') {
+      action = 'REJECT_SALARY';
+      details = `Từ chối bảng lương cho ${salaryUser?.name || record.userId} tháng ${record.date}. Lý do: ${rejectionReason || 'Không có lý do'}`;
+    } else if (status && status.startsWith('PENDING')) {
+      action = 'SUBMIT_SALARY';
+      details = `Gửi bảng lương cho ${salaryUser?.name || record.userId} tháng ${record.date} chờ phê duyệt`;
+    } else {
+      details = `Cập nhật trạng thái bảng lương cho ${salaryUser?.name || record.userId} tháng ${record.date} thành ${status}`;
+    }
+    
+    await createAuditLog(
+      action,
+      currentUser?.name || 'System',
+      currentUser?.id,
+      details,
+      'SALARY',
+      id
+    );
     
     res.json(updated);
   } catch (e: any) {

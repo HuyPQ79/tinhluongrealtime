@@ -356,8 +356,11 @@ export interface AuditLog {
   id: string;
   action: string;
   actor: string;
+  actorId?: string;
   timestamp: string;
   details: string;
+  entityType?: string;
+  entityId?: string;
   isConfigAction?: boolean;
 }
 

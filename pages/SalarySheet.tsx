@@ -31,37 +31,36 @@ const printStyles = `
       background: white !important;
       padding: 1cm;
     }
-    .printable-area * {
-      visibility: visible !important;
-    }
-    .no-print, .no-print * {
+    .printable-area .no-print,
+    .printable-area .no-print * {
       display: none !important;
       visibility: hidden !important;
     }
-    /* Ẩn tab DETAIL khi in - sử dụng selector đơn giản hơn */
-    .printable-area > div > div > div:not(.print-tab-content) {
-      display: none !important;
-    }
     /* Chỉ hiển thị tab PRINT */
-    .print-tab-content {
+    .printable-area .print-tab-content {
       display: block !important;
       visibility: visible !important;
     }
-    .print-tab-content * {
+    .printable-area .print-tab-content * {
       visibility: visible !important;
+      display: revert !important;
     }
-    .print-tab-content table {
+    .printable-area .print-tab-content table {
       display: table !important;
       visibility: visible !important;
     }
-    .print-tab-content tr {
+    .printable-area .print-tab-content tr {
       display: table-row !important;
       visibility: visible !important;
     }
-    .print-tab-content td,
-    .print-tab-content th {
+    .printable-area .print-tab-content td,
+    .printable-area .print-tab-content th {
       display: table-cell !important;
       visibility: visible !important;
+    }
+    /* Ẩn tab DETAIL */
+    .printable-area > div > div:has(> div:first-child:not(.print-tab-content)) {
+      display: none !important;
     }
     table {
       page-break-inside: avoid;
