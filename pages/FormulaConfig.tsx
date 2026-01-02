@@ -97,6 +97,7 @@ const FormulaConfig: React.FC = () => {
     const form = e.target as HTMLFormElement;
     const newFormula: SalaryFormula = {
         id: editingFormula ? editingFormula.id : `F${Date.now()}`,
+        code: editingFormula?.code || `F${Date.now()}`, // Đảm bảo có code
         name: (form.elements.namedItem('fname') as HTMLInputElement).value,
         targetField: (form.elements.namedItem('targetField') as HTMLSelectElement).value,
         formulaExpression: formulaExpression || (form.elements.namedItem('expression') as HTMLTextAreaElement)?.value || '',

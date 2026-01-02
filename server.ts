@@ -251,6 +251,22 @@ const createCrud = (
     app.post(`/api/${route}`, async (req, res) => {
       try {
         const data = mapIn(req.body || {});
+        
+        // Xử lý đặc biệt cho salaryFormula (dùng code làm unique key)
+        if (modelName === 'salaryFormula') {
+          if (!data.code) {
+            // Nếu không có code, tự động generate
+            data.code = data.id ? `F${data.id}` : `F${Date.now()}`;
+          }
+          
+          const item = await model.upsert({
+            where: { code: data.code },
+            update: { ...data, id: data.id || undefined },
+            create: { ...data, id: data.id || `F${Date.now()}` },
+          });
+          return res.json(mapOut(item));
+        }
+        
         if (data?.id) {
           // Xử lý createdAt riêng cho evaluationRequest (có @default(now()) trong schema)
           let updateData: any = data;
@@ -295,6 +311,7 @@ const createCrud = (
 createCrud('salaryFormula', ['formulas', 'salary-formulas'], {
   mapOut: (row: any) => ({
     ...row,
+    code: row.code || '', // Đảm bảo có code
     targetField: row.targetField || row.code || '', // Map code -> targetField nếu cần
     formulaExpression: row.expression || row.formulaExpression || '',
     isActive: row.status === 'ACTIVE' || row.isActive !== false,
@@ -304,6 +321,7 @@ createCrud('salaryFormula', ['formulas', 'salary-formulas'], {
     const { targetField, formulaExpression, isActive, ...rest } = body || {};
     return {
       ...rest,
+      code: rest.code || rest.id || `F${Date.now()}`, // Đảm bảo có code (từ code hoặc id hoặc generate)
       targetField: targetField || rest.targetField || '', // Lưu targetField vào DB
       expression: formulaExpression || rest.expression || '',
       status: isActive !== false ? 'ACTIVE' : 'INACTIVE',
