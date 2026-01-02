@@ -641,15 +641,15 @@ const FormulaConfig: React.FC = () => {
       {/* MODAL CẤU HÌNH CÔNG THỨC */}
       {isFModalOpen && (
         <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 text-left">
-          <form onSubmit={handleSaveFormula} className="bg-white rounded-[40px] shadow-2xl w-full max-w-2xl animate-fade-in-up text-left overflow-hidden">
-            <div className="p-8 bg-slate-900 text-white flex justify-between items-center text-left">
+          <form onSubmit={handleSaveFormula} className="bg-white rounded-[40px] shadow-2xl w-full max-w-2xl max-h-[90vh] animate-fade-in-up text-left overflow-hidden flex flex-col">
+            <div className="p-8 bg-slate-900 text-white flex justify-between items-center text-left shrink-0">
                 <div className="flex items-center gap-4 text-left">
                     <Sigma size={28}/>
                     <h3 className="font-black text-xl tracking-tighter uppercase text-left">{editingFormula ? 'Sửa Công Thức' : 'Thêm Công Thức Lương'}</h3>
                 </div>
-                <button type="button" onClick={() => setIsFModalOpen(false)}><X size={28}/></button>
+                <button type="button" onClick={() => { setIsFModalOpen(false); setEditingFormula(null); setFormulaExpression(''); }}><X size={28}/></button>
             </div>
-            <div className="p-10 space-y-6 text-left">
+            <div className="p-10 space-y-6 text-left overflow-y-auto flex-1 custom-scrollbar">
                 <div className="grid grid-cols-2 gap-6 text-left">
                     <div className="text-left text-left">
                         <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 text-left">Tên gợi nhớ</label>
@@ -715,7 +715,7 @@ const FormulaConfig: React.FC = () => {
                     <textarea name="desc" className="w-full px-4 py-3 border-2 border-slate-100 rounded-2xl text-sm bg-slate-50 text-left" defaultValue={editingFormula?.description} placeholder="Mô tả cách thức tính toán của công thức này..." />
                 </div>
             </div>
-            <div className="p-8 border-t flex justify-end gap-4 bg-gradient-to-r from-slate-50 to-indigo-50 text-left">
+            <div className="p-8 border-t flex justify-end gap-4 bg-gradient-to-r from-slate-50 to-indigo-50 text-left shrink-0">
                 <button type="button" onClick={() => { setIsFModalOpen(false); setEditingFormula(null); setFormulaExpression(''); }} className="px-10 py-4 font-bold text-slate-500 hover:text-slate-700 transition-colors rounded-xl">Hủy</button>
                 <button type="submit" className="px-12 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:from-indigo-700 hover:to-purple-700 transition-all active:scale-95 flex items-center gap-2">
                   <CheckCircle size={16}/> {editingFormula ? 'Cập Nhật' : 'Tạo Mới'} Công Thức

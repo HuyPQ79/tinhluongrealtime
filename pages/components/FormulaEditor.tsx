@@ -215,7 +215,10 @@ export const FormulaEditor: React.FC<FormulaEditorProps> = ({
             {filteredVariables.map((v, idx) => (
               <div
                 key={v.code}
-                onClick={() => insertVariable(v.code)}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // Ngăn textarea mất focus trước khi click
+                  insertVariable(v.code);
+                }}
                 className={`px-4 py-3 cursor-pointer transition-all flex items-center justify-between ${
                   idx === selectedIndex
                     ? 'bg-indigo-50 border-l-4 border-indigo-600'
