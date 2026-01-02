@@ -1072,7 +1072,7 @@ const SalarySheet: React.FC = () => {
                               )}
                           </div>
                       </div>
-                        </>
+                        </div>
                       )}
                       
                       {/* TAB: PHIẾU IN A4 */}
