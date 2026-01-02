@@ -217,36 +217,36 @@ const Sidebar = ({ isOpen, setIsOpen, onOpenProfile }: { isOpen: boolean; setIsO
   return (
     <>
       {isOpen && <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden" onClick={() => setIsOpen(false)}/>}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex items-center gap-3 h-20 px-8 bg-slate-950/50">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-             <ShieldCheck size={24} className="text-white" />
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 sm:w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center gap-2 sm:gap-3 h-16 sm:h-20 px-4 sm:px-6 md:px-8 bg-slate-950/50">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-indigo-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0">
+             <ShieldCheck size={20} className="sm:w-6 sm:h-6 text-white" />
           </div>
-          <div className="overflow-hidden">
-            <span className="text-lg font-black tracking-tight text-white block">HRM INTERNAL</span>
-            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none">Synology Station</span>
+          <div className="overflow-hidden min-w-0">
+            <span className="text-sm sm:text-lg font-black tracking-tight text-white block truncate">HRM INTERNAL</span>
+            <span className="text-[9px] sm:text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none">Synology Station</span>
           </div>
         </div>
 
-        <div className="px-6 py-6 border-b border-white/5">
-          <div className="flex items-center gap-4 p-4 bg-white/5 rounded-[24px] hover:bg-white/10 transition-all group border border-white/5 relative overflow-hidden">
-            <div className="relative">
-                <img src={currentUser?.avatar} alt="User" className="w-12 h-12 rounded-2xl border-2 border-indigo-500 shadow-md object-cover" />
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-slate-900 rounded-full"></div>
+        <div className="px-4 sm:px-6 py-4 sm:py-6 border-b border-white/5">
+          <div className="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-white/5 rounded-xl sm:rounded-[24px] hover:bg-white/10 transition-all group border border-white/5 relative overflow-hidden">
+            <div className="relative shrink-0">
+                <img src={currentUser?.avatar} alt="User" className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl border-2 border-indigo-500 shadow-md object-cover" />
+                <div className="absolute -bottom-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-emerald-500 border-2 border-slate-900 rounded-full"></div>
             </div>
-            <div className="overflow-hidden flex-1">
-              <p className="text-sm font-black truncate text-white">{currentUser?.name}</p>
+            <div className="overflow-hidden flex-1 min-w-0">
+              <p className="text-xs sm:text-sm font-black truncate text-white">{currentUser?.name}</p>
               <button 
                 onClick={onOpenProfile}
-                className="text-[9px] font-black text-indigo-400 uppercase tracking-widest leading-none flex items-center gap-1 mt-1 hover:text-white transition-colors"
+                className="text-[8px] sm:text-[9px] font-black text-indigo-400 uppercase tracking-widest leading-none flex items-center gap-1 mt-1 hover:text-white transition-colors"
               >
-                <Edit size={10}/> Hồ sơ & Bảo mật
+                <Edit size={9} className="sm:w-[10px] sm:h-[10px]"/> <span className="hidden sm:inline">Hồ sơ & Bảo mật</span><span className="sm:hidden">Hồ sơ</span>
               </button>
             </div>
           </div>
         </div>
 
-        <nav className="px-4 py-6 space-y-2 overflow-y-auto max-h-[calc(100vh-280px)] custom-scrollbar">
+        <nav className="px-2 sm:px-4 py-4 sm:py-6 space-y-1 sm:space-y-2 overflow-y-auto max-h-[calc(100vh-240px)] sm:max-h-[calc(100vh-280px)] custom-scrollbar">
           {navItems.map((item) => {
              const isActive = location.pathname === item.path;
              return (
@@ -254,27 +254,29 @@ const Sidebar = ({ isOpen, setIsOpen, onOpenProfile }: { isOpen: boolean; setIsO
                     key={item.path} 
                     to={item.path} 
                     onClick={() => setIsOpen(false)} 
-                    className={`flex items-center gap-4 px-5 py-4 rounded-[20px] transition-all duration-200 relative group ${isActive ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-900/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                    className={`flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4 rounded-lg sm:rounded-[20px] transition-all duration-200 relative group ${isActive ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-900/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
                 >
-                    <item.icon size={22} className={isActive ? 'text-white' : 'text-slate-500 group-hover:text-indigo-400'} />
-                    <span className="font-bold text-sm tracking-tight">{item.label}</span>
-                    {isActive && <div className="absolute right-4 w-1.5 h-1.5 bg-white rounded-full"></div>}
+                    <item.icon size={18} className={`sm:w-[22px] sm:h-[22px] shrink-0 ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-indigo-400'}`} />
+                    <span className="font-bold text-xs sm:text-sm tracking-tight truncate">{item.label}</span>
+                    {isActive && <div className="absolute right-3 sm:right-4 w-1.5 h-1.5 bg-white rounded-full"></div>}
                 </Link>
              );
           })}
         </nav>
 
-        <div className="absolute bottom-0 w-full p-6 bg-slate-950/20 backdrop-blur-md border-t border-white/5 space-y-4">
+        <div className="absolute bottom-0 w-full p-3 sm:p-4 md:p-6 bg-slate-950/20 backdrop-blur-md border-t border-white/5 space-y-3 sm:space-y-4">
           <div className="flex items-center justify-between px-2">
-             <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">NAS Connected</span>
+             <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest hidden sm:inline">NAS Connected</span>
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest sm:hidden">NAS</span>
              </div>
-             <span className="text-[10px] font-black text-slate-600 uppercase">PHP 8.2</span>
+             <span className="text-[9px] sm:text-[10px] font-black text-slate-600 uppercase">PHP 8.2</span>
           </div>
-          <button onClick={logout} className="flex items-center justify-center gap-3 w-full py-4 bg-white/5 text-slate-400 hover:text-white hover:bg-rose-600/20 hover:text-rose-400 rounded-2xl transition-all font-black text-xs uppercase tracking-widest border border-white/5 active:scale-95">
-            <LogOut size={18} />
-            <span>Đăng Xuất Hệ Thống</span>
+          <button onClick={logout} className="flex items-center justify-center gap-2 sm:gap-3 w-full py-3 sm:py-4 bg-white/5 text-slate-400 hover:text-white hover:bg-rose-600/20 hover:text-rose-400 rounded-xl sm:rounded-2xl transition-all font-black text-[10px] sm:text-xs uppercase tracking-widest border border-white/5 active:scale-95">
+            <LogOut size={16} className="sm:w-[18px] sm:h-[18px]" />
+            <span className="hidden sm:inline">Đăng Xuất Hệ Thống</span>
+            <span className="sm:hidden">Đăng Xuất</span>
           </button>
         </div>
       </aside>
@@ -305,12 +307,12 @@ const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
   };
 
   return (
-    <header className="h-20 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-6 lg:px-10 sticky top-0 z-40 shadow-sm no-print">
-      <div className="flex items-center gap-6">
-        <button onClick={toggleSidebar} className="p-3 text-slate-600 hover:bg-slate-100 rounded-2xl lg:hidden transition-all active:scale-90"><Menu size={24} /></button>
-        <div className="hidden sm:flex flex-col">
-            <h2 className="text-xl font-black text-slate-900 tracking-tight leading-none">Hệ Thống Lương Thực Lĩnh</h2>
-            <div className="flex items-center gap-2 mt-1.5">
+    <header className="h-16 sm:h-20 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-10 sticky top-0 z-40 shadow-sm no-print">
+      <div className="flex items-center gap-3 sm:gap-6 flex-1 min-w-0">
+        <button onClick={toggleSidebar} className="p-2 sm:p-3 text-slate-600 hover:bg-slate-100 rounded-xl sm:rounded-2xl lg:hidden transition-all active:scale-90 shrink-0"><Menu size={20} className="sm:w-6 sm:h-6" /></button>
+        <div className="flex flex-col min-w-0 flex-1">
+            <h2 className="text-base sm:text-lg md:text-xl font-black text-slate-900 tracking-tight leading-none truncate">Hệ Thống Lương Thực Lĩnh</h2>
+            <div className="hidden sm:flex items-center gap-2 mt-1.5">
                 <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-black rounded uppercase tracking-widest border border-slate-200">Nội Bộ NAS Synology</span>
                 <span className="text-slate-300">•</span>
                 <span className="text-emerald-500 text-[9px] font-black uppercase tracking-widest flex items-center gap-1"><Server size={10}/> Server: OK</span>
@@ -318,16 +320,16 @@ const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
         </div>
       </div>
       
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4 shrink-0">
          <div className="relative" ref={notiRef}>
              <button 
                 onClick={() => setIsNotiOpen(!isNotiOpen)}
-                className={`p-3 rounded-2xl transition-all relative ${isNotiOpen ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+                className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl transition-all relative ${isNotiOpen ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
              >
-                 <Bell size={22}/>
+                 <Bell size={18} className="sm:w-[22px] sm:h-[22px]"/>
                  {unreadCount > 0 && (
-                     <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white animate-bounce">
-                        {unreadCount}
+                     <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-rose-500 text-white text-[9px] sm:text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white animate-bounce">
+                        {unreadCount > 9 ? '9+' : unreadCount}
                      </span>
                  )}
              </button>
@@ -401,7 +403,7 @@ const MainLayout: React.FC = () => {
             <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} onOpenProfile={() => setProfileOpen(true)} />
             <div className="flex-1 flex flex-col min-w-0">
                 <Header toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-                <main className="flex-1 overflow-y-auto p-6 lg:p-10 scroll-smooth relative bg-slate-50/50">
+                <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-10 scroll-smooth relative bg-slate-50/50">
                     <div className="max-w-[1600px] mx-auto">
                         <Outlet />
                     </div>

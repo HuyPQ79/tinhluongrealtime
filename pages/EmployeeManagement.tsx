@@ -355,17 +355,17 @@ const EmployeeManagement: React.FC = () => {
                 <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx,.xls" onChange={handleImportExcel} />
                 <button 
                     onClick={handleDownloadTemplate}
-                    className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-slate-50 transition-all"
+                    className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 sm:gap-2 hover:bg-slate-50 transition-all"
                 >
-                    <FileSpreadsheet size={18}/> File mẫu
+                    <FileSpreadsheet size={16} className="sm:w-[18px] sm:h-[18px]"/> <span className="hidden sm:inline">File mẫu</span>
                 </button>
                 <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-slate-200 transition-all"
+                    className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-slate-100 text-slate-700 rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 sm:gap-2 hover:bg-slate-200 transition-all"
                 >
-                    <FileUp size={18}/> Import Excel
+                    <FileUp size={16} className="sm:w-[18px] sm:h-[18px]"/> <span className="hidden sm:inline">Import Excel</span><span className="sm:hidden">Import</span>
                 </button>
-                <button onClick={() => handleOpenUserModal(null)} className="flex-1 md:flex-none px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg hover:bg-indigo-700 transition-all active:scale-95"><UserPlus size={18}/> Thêm Nhân Viên</button>
+                <button onClick={() => handleOpenUserModal(null)} className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-indigo-600 text-white rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 sm:gap-2 shadow-lg hover:bg-indigo-700 transition-all active:scale-95"><UserPlus size={16} className="sm:w-[18px] sm:h-[18px]"/> <span className="hidden sm:inline">Thêm Nhân Viên</span><span className="sm:hidden">Thêm</span></button>
               </>
             )}
             {activeTab === 'DEPARTMENTS' && (
@@ -374,8 +374,8 @@ const EmployeeManagement: React.FC = () => {
           </div>
         </div>
         <div className="flex bg-slate-50/50">
-          <button onClick={() => setActiveTab('USERS')} className={`px-8 py-4 font-bold text-sm flex items-center gap-2 transition-all ${activeTab === 'USERS' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}><Users size={18}/> Nhân Sự</button>
-          <button onClick={() => setActiveTab('DEPARTMENTS')} className={`px-8 py-4 font-bold text-sm flex items-center gap-2 transition-all ${activeTab === 'DEPARTMENTS' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}><Building2 size={18}/> Phòng Ban</button>
+          <button onClick={() => setActiveTab('USERS')} className={`flex-1 sm:flex-none px-4 sm:px-8 py-3 sm:py-4 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all ${activeTab === 'USERS' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}><Users size={16} className="sm:w-[18px] sm:h-[18px]"/> <span className="hidden sm:inline">Nhân Sự</span><span className="sm:hidden">NS</span></button>
+          <button onClick={() => setActiveTab('DEPARTMENTS')} className={`flex-1 sm:flex-none px-4 sm:px-8 py-3 sm:py-4 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all ${activeTab === 'DEPARTMENTS' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}><Building2 size={16} className="sm:w-[18px] sm:h-[18px]"/> <span className="hidden sm:inline">Phòng Ban</span><span className="sm:hidden">PB</span></button>
         </div>
       </div>
 
@@ -429,15 +429,57 @@ const EmployeeManagement: React.FC = () => {
               </div>
           )}
 
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden text-sm">
-            <table className="w-full text-left">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden text-sm">
+            {/* Mobile: Card Layout */}
+            <div className="block md:hidden space-y-3 p-3">
+              {filteredUsers.map(u => {
+                const mainDept = departments.find(d => d.id === u.currentDeptId);
+                const { months, coeff } = calculateSeniority(u.joinDate);
+                return (
+                  <div key={u.id} className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 flex-1">
+                        <img src={u.avatar} className="w-12 h-12 rounded-full border-2 border-indigo-200 shadow-sm" alt=""/>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-900 truncate">{u.name}</p>
+                          <p className="text-[10px] text-slate-400">@{u.username}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleOpenUserModal(u)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"><Edit size={18}/></button>
+                        <button onClick={() => openDeleteReason('USER', u.id, u.name)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase mb-1">Phòng ban</p>
+                        <p className="font-bold text-indigo-700">{mainDept?.name || 'N/A'}</p>
+                        <p className="text-[10px] text-slate-500">{u.currentPosition || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase mb-1">Thâm niên</p>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-700">{months} tháng</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${coeff >= 1 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-slate-50 text-slate-400'}`}>HS: {coeff.toFixed(1)}</span>
+                        </div>
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${getStatusColor(u.status)}`}>{getStatusLabel(u.status)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Desktop: Table Layout */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left">
                 <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-widest border-b">
                   <tr>
-                    <th className="px-6 py-4">Nhân viên</th>
-                    <th className="px-6 py-4">Vị trí Chính</th>
-                    <th className="px-6 py-4">Thâm niên (Hệ số)</th>
-                    <th className="px-6 py-4">Trạng thái</th>
-                    <th className="px-6 py-4 text-right">Thao Tác</th>
+                    <th className="px-4 lg:px-6 py-3 lg:py-4">Nhân viên</th>
+                    <th className="px-4 lg:px-6 py-3 lg:py-4">Vị trí Chính</th>
+                    <th className="px-4 lg:px-6 py-3 lg:py-4">Thâm niên (Hệ số)</th>
+                    <th className="px-4 lg:px-6 py-3 lg:py-4">Trạng thái</th>
+                    <th className="px-4 lg:px-6 py-3 lg:py-4 text-right">Thao Tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -446,7 +488,7 @@ const EmployeeManagement: React.FC = () => {
                     const { months, coeff } = calculateSeniority(u.joinDate);
                     return (
                       <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
-                        <td className="px-6 py-4">
+                        <td className="px-4 lg:px-6 py-3 lg:py-4">
                           <div className="flex items-center gap-3">
                             <img src={u.avatar} className="w-10 h-10 rounded-full border shadow-sm" alt=""/>
                             <div className="text-left">
@@ -455,20 +497,20 @@ const EmployeeManagement: React.FC = () => {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 lg:px-6 py-3 lg:py-4">
                           <p className="font-bold text-indigo-700 text-xs">{mainDept?.name}</p>
                           <p className="text-[10px] text-slate-500 italic">{u.currentPosition}</p>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 lg:px-6 py-3 lg:py-4">
                           <div className="flex items-center gap-2">
                             <span className="font-black text-slate-700 text-xs">{months} tháng</span>
                             <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${coeff >= 1 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-slate-50 text-slate-400'}`}>HS: {coeff.toFixed(1)}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 lg:px-6 py-3 lg:py-4">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${getStatusColor(u.status)}`}>{getStatusLabel(u.status)}</span>
                         </td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-4 lg:px-6 py-3 lg:py-4 text-right">
                           <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button onClick={() => handleOpenUserModal(u)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Sửa hồ sơ"><Edit size={18}/></button>
                             <button onClick={() => openDeleteReason('USER', u.id, u.name)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Xóa nhân viên"><Trash2 size={18}/></button>
@@ -478,7 +520,8 @@ const EmployeeManagement: React.FC = () => {
                     );
                   })}
                 </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         </div>
       ) : (
