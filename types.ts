@@ -191,6 +191,7 @@ export interface Criterion {
   point?: number;
   threshold: number; 
   description: string;
+  departmentId?: string; // Phòng ban áp dụng (undefined/null = áp dụng cho tất cả)
 }
 
 export interface EvaluationRequest {

@@ -60,6 +60,7 @@ model Department {
   hrId            String?
   blockDirectorId String?
   users           User[]
+  criteria        Criterion[]
   
   @@map("departments")
 }
@@ -246,6 +247,8 @@ model Criterion {
   proofRequired  Boolean           @default(false)
   groupId        String?
   group          CriterionGroup?   @relation(fields: [groupId], references: [id])
+  departmentId   String?           // Phòng ban áp dụng (null = áp dụng cho tất cả)
+  department     Department?       @relation(fields: [departmentId], references: [id])
   @@map("criteria")
 }
 

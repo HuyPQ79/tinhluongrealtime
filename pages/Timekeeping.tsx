@@ -175,8 +175,22 @@ const Timekeeping: React.FC = () => {
   }, [currentDeptUsers, userSearch]);
 
   const filteredCriteriaForSelect = useMemo(() => {
-    return criteriaList.filter(c => c.name.toLowerCase().includes(criteriaSearch.toLowerCase()));
-  }, [criteriaList, criteriaSearch]);
+    // Filter theo search text
+    let filtered = criteriaList.filter(c => c.name.toLowerCase().includes(criteriaSearch.toLowerCase()));
+    
+    // Filter theo department của user được chọn (nếu có)
+    if (evalForm.userId) {
+      const user = allUsers.find(u => u.id === evalForm.userId);
+      const userDeptId = user?.currentDeptId;
+      
+      if (userDeptId) {
+        // Chỉ hiển thị criteria không có departmentId (áp dụng cho tất cả) hoặc có departmentId trùng với phòng ban của user
+        filtered = filtered.filter(c => !c.departmentId || c.departmentId === userDeptId);
+      }
+    }
+    
+    return filtered;
+  }, [criteriaList, criteriaSearch, evalForm.userId, allUsers]);
 
   const filteredEvaluationsByDate = useMemo(() => {
     return evaluationRequests.filter(req => {

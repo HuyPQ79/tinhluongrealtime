@@ -5,7 +5,7 @@ import { useAppContext } from '../context/AppContext';
 import { Criterion, CriterionGroup } from '../types';
 
 const CriteriaManagement: React.FC = () => {
-  const { criteriaList, criteriaGroups, addCriterion, updateCriterion, deleteCriterion, addCriterionGroup, updateCriterionGroup, deleteCriterionGroup } = useAppContext();
+  const { criteriaList, criteriaGroups, departments, addCriterion, updateCriterion, deleteCriterion, addCriterionGroup, updateCriterionGroup, deleteCriterionGroup } = useAppContext();
   
   const [activeTab, setActiveTab] = useState<'ITEMS' | 'GROUPS'>('ITEMS');
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -19,6 +19,7 @@ const CriteriaManagement: React.FC = () => {
   const handleSaveItem = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
+    const deptId = f.get('departmentId') as string;
     const data: Criterion = {
       id: editingItem?.id || `C${Date.now()}`,
       groupId: f.get('groupId') as string,
@@ -28,7 +29,8 @@ const CriteriaManagement: React.FC = () => {
       value: Number(f.get('value')),
       point: 0, 
       threshold: Number(f.get('threshold') || 0),
-      description: f.get('description') as string
+      description: f.get('description') as string,
+      departmentId: deptId && deptId !== '' ? deptId : undefined
     };
 
     if (editingItem) updateCriterion(data);
@@ -201,6 +203,14 @@ const CriteriaManagement: React.FC = () => {
                 <select name="groupId" required className="w-full px-4 py-2.5 border rounded-xl font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500 text-left" defaultValue={editingItem?.groupId}>
                     {criteriaGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
+              </div>
+              <div className="text-left">
+                <label className="text-[10px] font-black text-slate-500 uppercase block mb-1 text-left">Phòng ban áp dụng</label>
+                <select name="departmentId" className="w-full px-4 py-2.5 border rounded-xl font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500 text-left" defaultValue={editingItem?.departmentId || ''}>
+                    <option value="">-- Tất cả phòng ban --</option>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+                <p className="text-[9px] text-slate-400 italic mt-1 text-left">Để trống hoặc chọn "Tất cả phòng ban" để áp dụng cho tất cả. Chọn phòng ban cụ thể để chỉ áp dụng cho phòng ban đó.</p>
               </div>
               <div className="grid grid-cols-2 gap-4 text-left">
                 <div className="text-left">

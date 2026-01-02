@@ -237,6 +237,7 @@ createCrud('criterion', ['criteria/items', 'criteria', 'criterions'], {
     ...row,
     point: row.points || 0, // Map points -> point cho frontend
     description: row.description || '', // Đảm bảo có description
+    departmentId: row.departmentId || undefined, // Map departmentId
   }),
   mapIn: (body: any) => {
     const { point, ...rest } = body || {};
@@ -248,6 +249,8 @@ createCrud('criterion', ['criteria/items', 'criteria', 'criterions'], {
       target: rest.target || 'MONTHLY_SALARY',
       // Đảm bảo proofRequired có giá trị boolean
       proofRequired: rest.proofRequired !== undefined ? rest.proofRequired : false,
+      // departmentId có thể null (áp dụng cho tất cả)
+      departmentId: rest.departmentId || null,
     };
   },
 }); 
@@ -624,10 +627,10 @@ app.get('/api/users', async (req: AuthRequest, res) => {
     try {
         let where: any = {};
         
-        // Filter theo assignedDeptIds cho KE_TOAN_LUONG
+        // Filter theo role
         if (req.currentUser?.roles?.includes('KE_TOAN_LUONG')) {
+            // Kế toán lương: filter theo assignedDeptIds
             const assignedDeptIds = req.currentUser.assignedDeptIds || [];
-            // Nếu không có assignedDeptIds, fallback về currentDeptId của chính user đó
             const deptIds = assignedDeptIds.length > 0 
                 ? assignedDeptIds 
                 : (req.currentUser.currentDeptId ? [req.currentUser.currentDeptId] : []);
@@ -640,8 +643,63 @@ app.get('/api/users', async (req: AuthRequest, res) => {
                     ]
                 };
             } else {
-                // Không có phòng ban được gán -> trả về rỗng
                 return res.json([]);
+            }
+        } else if (req.currentUser?.roles?.includes('QUAN_LY')) {
+            // Trưởng phòng: chỉ thấy user trong phòng ban mình quản lý
+            // Tìm các phòng ban mà user này là manager
+            const deptsManaged = await prisma.department.findMany({
+                where: { managerId: req.currentUser.id },
+                select: { id: true }
+            });
+            const deptIds = deptsManaged.map(d => d.id);
+            
+            if (deptIds.length > 0) {
+                where = {
+                    OR: [
+                        { currentDeptId: { in: deptIds } },
+                        { sideDeptId: { in: deptIds } }
+                    ]
+                };
+            } else {
+                // Không quản lý phòng ban nào -> chỉ thấy chính mình
+                where = { id: req.currentUser.id };
+            }
+        } else if (req.currentUser?.roles?.includes('GIAM_DOC_KHOI')) {
+            // Giám đốc khối: thấy user trong các phòng ban mình quản lý
+            const deptsManaged = await prisma.department.findMany({
+                where: { blockDirectorId: req.currentUser.id },
+                select: { id: true }
+            });
+            const deptIds = deptsManaged.map(d => d.id);
+            
+            if (deptIds.length > 0) {
+                where = {
+                    OR: [
+                        { currentDeptId: { in: deptIds } },
+                        { sideDeptId: { in: deptIds } }
+                    ]
+                };
+            } else {
+                where = { id: req.currentUser.id };
+            }
+        } else if (req.currentUser?.roles?.includes('NHAN_SU')) {
+            // Nhân sự: thấy user trong các phòng ban mình phụ trách
+            const deptsManaged = await prisma.department.findMany({
+                where: { hrId: req.currentUser.id },
+                select: { id: true }
+            });
+            const deptIds = deptsManaged.map(d => d.id);
+            
+            if (deptIds.length > 0) {
+                where = {
+                    OR: [
+                        { currentDeptId: { in: deptIds } },
+                        { sideDeptId: { in: deptIds } }
+                    ]
+                };
+            } else {
+                where = { id: req.currentUser.id };
             }
         }
         
