@@ -16,8 +16,8 @@ import * as XLSX from 'xlsx';
 const printStyles = `
   @media print {
     @page {
-      size: A4;
-      margin: 0.5cm;
+      size: A5;
+      margin: 0.3cm;
     }
     body * {
       visibility: hidden;
@@ -29,7 +29,8 @@ const printStyles = `
       width: 100%;
       min-height: 100%;
       background: white !important;
-      padding: 1cm;
+      padding: 0.5cm;
+      font-size: 10px;
     }
     /* Ẩn tất cả trong printable-area trước */
     .printable-area * {
@@ -842,7 +843,7 @@ const SalarySheet: React.FC = () => {
                             : 'bg-white text-slate-400 hover:bg-slate-50'
                         }`}
                       >
-                        <Printer size={18}/> Phiếu In A4
+                        <Printer size={18}/> Phiếu In A5
                       </button>
                   </div>
 
@@ -1075,7 +1076,7 @@ const SalarySheet: React.FC = () => {
                         </div>
                       )}
                       
-                      {/* TAB: PHIẾU IN A4 */}
+                      {/* TAB: PHIẾU IN A5 */}
                       {detailModalTab === 'PRINT' && (
                         <div className="space-y-6 print-tab-content">
                           {/* Nút In */}
@@ -1114,13 +1115,13 @@ const SalarySheet: React.FC = () => {
                           </div>
 
                           {/* VÙNG 2: BẢNG LƯƠNG CHI TIẾT (DẠNG BẢNG EXCEL) */}
-                          <div className="mt-4">
-                          <table className="w-full border-collapse border-2 border-slate-900 text-xs">
+                          <div className="mt-3">
+                          <table className="w-full border-collapse border-2 border-slate-900 text-[9px]">
                               <thead>
                                   <tr className="bg-slate-900 text-white">
-                                      <th className="border-2 border-slate-900 px-4 py-3 text-left font-black uppercase">STT</th>
-                                      <th className="border-2 border-slate-900 px-4 py-3 text-left font-black uppercase">Nội dung</th>
-                                      <th className="border-2 border-slate-900 px-4 py-3 text-right font-black uppercase">Số tiền (VNĐ)</th>
+                                      <th className="border-2 border-slate-900 px-2 py-2 text-left font-black uppercase">STT</th>
+                                      <th className="border-2 border-slate-900 px-2 py-2 text-left font-black uppercase">Nội dung</th>
+                                      <th className="border-2 border-slate-900 px-2 py-2 text-right font-black uppercase">Số tiền (VNĐ)</th>
                                   </tr>
                               </thead>
                               <tbody>
@@ -1167,11 +1168,11 @@ const SalarySheet: React.FC = () => {
                                               <tr key={idx} className={
                                                   isGross ? 'bg-blue-50 font-bold' : 
                                                   isTotalDeduction ? 'bg-rose-50 font-bold' : 
-                                                  isNet ? 'bg-emerald-100 font-black text-lg' : ''
+                                                  isNet ? 'bg-emerald-100 font-black text-sm' : ''
                                               }>
-                                                  <td className="border-2 border-slate-300 px-4 py-2 text-center">{row.stt || ''}</td>
-                                                  <td className="border-2 border-slate-300 px-4 py-2">{row.content}</td>
-                                                  <td className="border-2 border-slate-300 px-4 py-2 text-right font-bold">{formatCurrency(Math.abs(row.amount))}</td>
+                                                  <td className="border-2 border-slate-300 px-2 py-1.5 text-center">{row.stt || ''}</td>
+                                                  <td className="border-2 border-slate-300 px-2 py-1.5">{row.content}</td>
+                                                  <td className="border-2 border-slate-300 px-2 py-1.5 text-right font-bold">{formatCurrency(Math.abs(row.amount))}</td>
                                               </tr>
                                           );
                                       });
@@ -1181,18 +1182,18 @@ const SalarySheet: React.FC = () => {
                       </div>
 
                           {/* VÙNG 3: VÙNG KÝ */}
-                          <div className="mt-8 grid grid-cols-3 gap-6 text-center">
-                              <div className="space-y-16">
-                                  <p className="font-black text-[10px] uppercase text-slate-900">NGƯỜI LẬP BIỂU</p>
-                                  <p className="text-[9px] text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
+                          <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                              <div className="space-y-8">
+                                  <p className="font-black text-[9px] uppercase text-slate-900">NGƯỜI LẬP BIỂU</p>
+                                  <p className="text-[8px] text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
                               </div>
-                              <div className="space-y-16">
-                                  <p className="font-black text-[10px] uppercase text-slate-900">KẾ TOÁN TRƯỞNG</p>
-                                  <p className="text-[9px] text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
+                              <div className="space-y-8">
+                                  <p className="font-black text-[9px] uppercase text-slate-900">KẾ TOÁN TRƯỞNG</p>
+                                  <p className="text-[8px] text-slate-400 italic">(Ký & Ghi rõ họ tên)</p>
                               </div>
-                              <div className="space-y-16">
-                                  <p className="font-black text-[10px] uppercase text-slate-900">BAN GIÁM ĐỐC</p>
-                                  <p className="text-[9px] text-slate-400 italic">(Ký tên & Đóng dấu)</p>
+                              <div className="space-y-8">
+                                  <p className="font-black text-[9px] uppercase text-slate-900">BAN GIÁM ĐỐC</p>
+                                  <p className="text-[8px] text-slate-400 italic">(Ký tên & Đóng dấu)</p>
                               </div>
                           </div>
                           

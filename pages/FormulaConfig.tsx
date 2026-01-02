@@ -7,6 +7,8 @@ import {
 import { useAppContext } from '../context/AppContext';
 import { DailyWorkItem, SalaryFormula, SalaryVariable, UserRole, RecordStatus, ApprovalStep, SystemRole, ApprovalWorkflow } from '../types';
 import { WorkflowModal } from './components/WorkflowModal';
+import { FormulaEditor } from './components/FormulaEditor';
+import { reloadFormulasVariables } from '../services/api';
 
 /**
  * FormulaConfig component handles system-level configurations including salary formulas,
@@ -28,6 +30,8 @@ const FormulaConfig: React.FC = () => {
   
   const [isBackupLoading, setIsBackupLoading] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>('2025-05-15 03:00 AM');
+  
+  const [isReloading, setIsReloading] = useState(false);
 
   const [isDWModalOpen, setIsDWModalOpen] = useState(false);
   const [editingDWItem, setEditingDWItem] = useState<DailyWorkItem | null>(null);
@@ -68,6 +72,25 @@ const FormulaConfig: React.FC = () => {
       }, 2000);
   };
 
+  const handleReloadFormulasVariables = async () => {
+    if (!confirm('Bạn có chắc muốn nạp lại toàn bộ công thức và biến số từ seeder? Hành động này sẽ cập nhật dữ liệu hiện có.')) {
+      return;
+    }
+    
+    setIsReloading(true);
+    try {
+      const result = await reloadFormulasVariables();
+      alert(`Đã nạp lại thành công!\n- ${result.formulasCount} công thức\n- ${result.variablesCount} biến số`);
+      addAuditLog('RELOAD_FORMULAS_VARIABLES', `Đã nạp lại ${result.formulasCount} công thức và ${result.variablesCount} biến số`);
+      // Reload page data
+      window.location.reload();
+    } catch (error: any) {
+      alert(`Lỗi: ${error.message || 'Không thể nạp lại công thức và biến số'}`);
+    } finally {
+      setIsReloading(false);
+    }
+  };
+
   const handleSaveFormula = (e: React.FormEvent) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
@@ -75,7 +98,7 @@ const FormulaConfig: React.FC = () => {
         id: editingFormula ? editingFormula.id : `F${Date.now()}`,
         name: (form.elements.namedItem('fname') as HTMLInputElement).value,
         targetField: (form.elements.namedItem('targetField') as HTMLSelectElement).value,
-        formulaExpression: (form.elements.namedItem('expression') as HTMLTextAreaElement).value,
+        formulaExpression: formulaExpression || (form.elements.namedItem('expression') as HTMLTextAreaElement)?.value || '',
         isActive: true,
         order: editingFormula ? editingFormula.order : formulas.length + 1,
         description: (form.elements.namedItem('desc') as HTMLTextAreaElement).value
@@ -83,6 +106,7 @@ const FormulaConfig: React.FC = () => {
     if (editingFormula) updateFormula(newFormula);
     else addFormula(newFormula);
     setIsFModalOpen(false);
+    setFormulaExpression('');
   };
 
   const handleSaveVar = (e: React.FormEvent) => {
@@ -168,7 +192,35 @@ const FormulaConfig: React.FC = () => {
             <p className="text-sm text-slate-500 font-medium italic mt-2 text-left">Thiết lập logic lương, workflow phê duyệt và bảo trì hệ thống.</p>
         </div>
         <div className="flex gap-3 text-left">
-            {activeTab === 'FORMULAS' && <button onClick={() => { setEditingFormula(null); setIsFModalOpen(true); }} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all active:scale-95"><Plus size={18}/> Tạo Công Thức</button>}
+            {activeTab === 'FORMULAS' && (
+              <>
+                <button 
+                  onClick={handleReloadFormulasVariables}
+                  disabled={isReloading}
+                  className={`px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl transition-all active:scale-95 ${
+                    isReloading 
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  }`}
+                >
+                  {isReloading ? (
+                    <>
+                      <RotateCcw size={18} className="animate-spin"/> Đang nạp...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw size={18}/> Nạp Lại Công Thức & Biến Số
+                    </>
+                  )}
+                </button>
+                <button 
+                  onClick={() => { setEditingFormula(null); setFormulaExpression(''); setIsFModalOpen(true); }} 
+                  className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all active:scale-95"
+                >
+                  <Plus size={18}/> Tạo Công Thức
+                </button>
+              </>
+            )}
             {activeTab === 'VARIABLES' && <button onClick={() => { setEditingVar(null); setIsVarModalOpen(true); }} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-black transition-all active:scale-95"><Plus size={18}/> Thêm Biến Số</button>}
             {activeTab === 'VAI_TRO' && <button onClick={() => { setEditingRole(null); setIsRoleModalOpen(true); }} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"><Plus size={18}/> Thêm Vai Trò</button>}
             {activeTab === 'APPROVAL' && <button onClick={() => { setEditingWorkflow(null); setIsWorkflowModalOpen(true); }} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"><Plus size={18}/> Tạo Luồng Phê Duyệt</button>}
@@ -418,7 +470,7 @@ const FormulaConfig: React.FC = () => {
                               <p className="text-xs text-slate-400 font-medium italic mt-2 px-1 text-left">"{f.description}"</p>
                           </div>
                           <div className="flex gap-2 shrink-0 text-left text-right">
-                            <button onClick={() => {setEditingFormula(f); setIsFModalOpen(true);}} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm"><Edit size={20}/></button>
+                            <button onClick={() => {setEditingFormula(f); setFormulaExpression(f.formulaExpression); setIsFModalOpen(true);}} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm"><Edit size={20}/></button>
                             <button onClick={() => openDeleteReason('FORMULA', f.id, f.name)} className="p-4 bg-rose-50 text-rose-500 rounded-2xl hover:bg-rose-600 hover:text-white transition-all shadow-sm"><Trash2 size={20}/></button>
                           </div>
                       </div>
@@ -614,7 +666,26 @@ const FormulaConfig: React.FC = () => {
                 </div>
                 <div className="text-left text-left">
                     <label className="text-[10px] font-black text-indigo-600 uppercase block mb-1 text-left">Biểu thức công thức (Excel style)</label>
-                    <textarea name="expression" required className="w-full px-4 py-4 border-2 border-indigo-50 rounded-2xl font-mono text-sm min-h-[100px] bg-slate-950 text-indigo-400 text-left" defaultValue={editingFormula?.formulaExpression} placeholder="({LCB_dm} / {Ctc}) * {Ctt}" />
+                    <div className="space-y-2">
+                      <FormulaEditor
+                        value={formulaExpression}
+                        onChange={(newValue) => {
+                          setFormulaExpression(newValue);
+                          const form = document.querySelector('form') as HTMLFormElement;
+                          if (form) {
+                            const exprInput = form.elements.namedItem('expression') as HTMLTextAreaElement;
+                            if (exprInput) {
+                              exprInput.value = newValue;
+                            }
+                          }
+                        }}
+                        variables={salaryVariables}
+                        onValidate={(isValid, error) => {
+                          // Validation feedback
+                        }}
+                      />
+                      <input type="hidden" name="expression" value={formulaExpression} />
+                    </div>
                 </div>
                 <div className="text-left text-left">
                     <label className="text-[10px] font-black text-slate-400 uppercase block mb-1 text-left">Diễn giải nghiệp vụ</label>

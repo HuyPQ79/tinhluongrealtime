@@ -9,6 +9,10 @@ import jwt from 'jsonwebtoken';
 // --- IMPORT SEEDER ---
 import { seedDatabase } from './seeder';
 
+// --- IMPORT FORMULA ENGINE ---
+import { evaluateFormula, FormulaContext } from './utils/formulaEngine';
+import { buildVariableContext, resolveAllVariables, VariableContext } from './utils/variableResolver';
+
 // --- ERROR TRAP ---
 process.on('uncaughtException', (err) => { console.error('🔥 CRITICAL:', err); });
 process.on('unhandledRejection', (reason, promise) => { console.error('🔥 PROMISE:', reason); });
@@ -1234,6 +1238,12 @@ app.post('/api/salary-records/calculate', async (req: AuthRequest, res) => {
     const criteriaGroups = await prisma.criterionGroup.findMany();
     const systemConfig = await prisma.systemConfig.findUnique({ where: { id: 'default_config' } });
     
+    // Lấy công thức từ DB (nếu có)
+    const formulas = await prisma.salaryFormula.findMany({
+      where: { status: 'ACTIVE' },
+      orderBy: { order: 'asc' }
+    });
+    
     const configExtra = (systemConfig?.insuranceRules as any) || {};
     const insuranceRate = configExtra.insuranceRate ?? 10.5;
     const unionFeeRate = configExtra.unionFeeRate ?? 1;
@@ -1283,9 +1293,6 @@ app.post('/api/salary-records/calculate', async (req: AuthRequest, res) => {
       const DG_khoan = Number(pieceworkConfig?.unitPrice || user.pieceworkUnitPrice || 0);
       const LSL_dm = user.paymentType === 'PIECEWORK' ? SL_khoan * DG_khoan : 0;
       
-      // Tính LCB_tt
-      const actualBaseSalary = (LCB_dm / Ctc) * Ctt;
-      
       // Tính KPI từ evaluations đã APPROVED trong tháng
       const userEvaluations = evaluations.filter(
         e => e.userId === user.id && 
@@ -1326,23 +1333,77 @@ app.post('/api/salary-records/calculate', async (req: AuthRequest, res) => {
         }
       }
       
-      // Tính LHQ_tt hoặc LSL_tt với KPI
+      // Build variable context (cần CO_tc và TR_tc đã tính)
+      const varContext = buildVariableContext(
+        user,
+        grade,
+        userAttendance,
+        userEvaluations,
+        systemConfig!,
+        {
+          Ctc, Ctt, Cn, NCD, NL, NCL, NKL, NCV, SL_tt,
+          LCB_dm, LHQ_dm, LSL_dm, SL_khoan, DG_khoan,
+          CO_tc, TR_tc
+        }
+      );
+      const resolvedVars = resolveAllVariables(varContext);
+      
+      // Tính LCB_tt - Sử dụng Formula Engine nếu có công thức trong DB
+      let actualBaseSalary = 0;
+      const formulaForBaseSalary = formulas.find(f => f.targetField === 'actualBaseSalary');
+      if (formulaForBaseSalary) {
+        const result = evaluateFormula(formulaForBaseSalary.expression, resolvedVars);
+        if (result.error) {
+          console.error(`Error evaluating formula F1 for user ${user.id}:`, result.error);
+          actualBaseSalary = (LCB_dm / Ctc) * Ctt;
+        } else {
+          actualBaseSalary = result.value;
+        }
+      } else {
+        actualBaseSalary = (LCB_dm / Ctc) * Ctt;
+      }
+      
+      // Tính LHQ_tt hoặc LSL_tt với KPI - Sử dụng Formula Engine nếu có
       let actualEfficiencySalary = 0;
       let actualPieceworkSalary = 0;
       
       if (user.paymentType === 'PIECEWORK') {
-        // LSL_tt = (LSL_dm / Ctc) * Ctt + (CO_tc - TR_tc) * LSL_dm
-        const base = (LSL_dm / Ctc) * Ctt;
-        const kpiAdjustment = (CO_tc - TR_tc) * LSL_dm;
-        actualPieceworkSalary = base + kpiAdjustment;
+        const formulaForPiecework = formulas.find(f => f.targetField === 'actualPieceworkSalary');
+        if (formulaForPiecework) {
+          const result = evaluateFormula(formulaForPiecework.expression, resolvedVars);
+          if (result.error) {
+            console.error(`Error evaluating formula F3 for user ${user.id}:`, result.error);
+            const base = (LSL_dm / Ctc) * Ctt;
+            const kpiAdjustment = (CO_tc - TR_tc) * LSL_dm;
+            actualPieceworkSalary = base + kpiAdjustment;
+          } else {
+            actualPieceworkSalary = result.value;
+          }
+        } else {
+          const base = (LSL_dm / Ctc) * Ctt;
+          const kpiAdjustment = (CO_tc - TR_tc) * LSL_dm;
+          actualPieceworkSalary = base + kpiAdjustment;
+        }
       } else {
-        // LHQ_tt = (LHQ_dm / Ctc) * Ctt + (CO_tc - TR_tc) * LHQ_dm
-        const base = (LHQ_dm / Ctc) * Ctt;
-        const kpiAdjustment = (CO_tc - TR_tc) * LHQ_dm;
-        actualEfficiencySalary = base + kpiAdjustment;
+        const formulaForEfficiency = formulas.find(f => f.targetField === 'actualEfficiencySalary');
+        if (formulaForEfficiency) {
+          const result = evaluateFormula(formulaForEfficiency.expression, resolvedVars);
+          if (result.error) {
+            console.error(`Error evaluating formula F2 for user ${user.id}:`, result.error);
+            const base = (LHQ_dm / Ctc) * Ctt;
+            const kpiAdjustment = (CO_tc - TR_tc) * LHQ_dm;
+            actualEfficiencySalary = base + kpiAdjustment;
+          } else {
+            actualEfficiencySalary = result.value;
+          }
+        } else {
+          const base = (LHQ_dm / Ctc) * Ctt;
+          const kpiAdjustment = (CO_tc - TR_tc) * LHQ_dm;
+          actualEfficiencySalary = base + kpiAdjustment;
+        }
       }
       
-      // Tính Lương Khác (Lcn + Ltc + Lncl)
+      // Tính Lương Khác (Lcn + Ltc + Lncl) - Sử dụng Formula Engine nếu có
       let Lcn = 0;
       let Ltc = 0;
       
@@ -1361,8 +1422,22 @@ app.post('/api/salary-records/calculate', async (req: AuthRequest, res) => {
         }
       }
       
-      const Lncl = (NCD + NL + NCL) * (LCB_dm / Ctc) + (NCV * LCB_dm / Ctc * 0.7);
-      const Lk = Lcn + Ltc + Lncl;
+      // Tính Lk (otherSalary) - Sử dụng Formula Engine nếu có
+      let Lk = 0;
+      const formulaForOtherSalary = formulas.find(f => f.targetField === 'otherSalary');
+      if (formulaForOtherSalary) {
+        const result = evaluateFormula(formulaForOtherSalary.expression, resolvedVars);
+        if (result.error) {
+          console.error(`Error evaluating formula F4 for user ${user.id}:`, result.error);
+          // Fallback
+          Lk = Lcn + Ltc + Lncl;
+        } else {
+          Lk = result.value;
+        }
+      } else {
+        // Fallback to hardcoded logic
+        Lk = Lcn + Ltc + Lncl;
+      }
       
       // Tính Phụ cấp
       const PC_cd = Number(grade?.fixedAllowance || 0);
@@ -1937,6 +2012,77 @@ app.get('/api/seed-data-secret', async (req, res) => {
         await seedDatabase();
         res.json({ success: true, message: "OK" });
     } catch (error: any) { res.status(500).json({ success: false, error: error.message }); }
+});
+
+// API: Nạp lại công thức và biến số từ seeder (không cần chạy lại seeder)
+app.post('/api/system/reload-formulas-variables', async (req, res) => {
+  try {
+    const { INITIAL_FORMULAS, INITIAL_SALARY_VARIABLES } = await import('./seeder');
+    
+    // Nạp lại công thức
+    let formulasCount = 0;
+    for (const f of INITIAL_FORMULAS) {
+      await prisma.salaryFormula.upsert({
+        where: { code: f.code },
+        update: {
+          name: f.name,
+          area: f.area,
+          targetField: f.targetField || '',
+          expression: f.expression,
+          status: f.status,
+          order: f.order,
+          description: f.description || null,
+          group: f.group || null
+        },
+        create: {
+          code: f.code,
+          name: f.name,
+          area: f.area,
+          targetField: f.targetField || '',
+          expression: f.expression,
+          status: f.status,
+          order: f.order,
+          description: f.description || null,
+          group: f.group || null
+        }
+      });
+      formulasCount++;
+    }
+    
+    // Nạp lại biến số (loại bỏ duplicate)
+    const uniqueVariables = INITIAL_SALARY_VARIABLES.filter((v, index, self) => 
+      index === self.findIndex(t => t.code === v.code)
+    );
+    
+    let variablesCount = 0;
+    for (const v of uniqueVariables) {
+      await prisma.salaryVariable.upsert({
+        where: { code: v.code },
+        update: {
+          name: v.name,
+          description: v.description || null,
+          group: v.group || null
+        },
+        create: {
+          code: v.code,
+          name: v.name,
+          description: v.description || null,
+          group: v.group || null
+        }
+      });
+      variablesCount++;
+    }
+    
+    res.json({
+      success: true,
+      message: `Đã nạp lại ${formulasCount} công thức và ${variablesCount} biến số`,
+      formulasCount,
+      variablesCount
+    });
+  } catch (error: any) {
+    console.error('Error reloading formulas/variables:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Static

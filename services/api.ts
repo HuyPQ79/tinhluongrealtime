@@ -53,6 +53,16 @@ const request = async (endpoint: string, options: RequestInit = {}) => {
     }
 };
 
+// Reload formulas and variables from seeder
+export const reloadFormulasVariables = async (): Promise<{ success: boolean; message: string; formulasCount: number; variablesCount: number }> => {
+  const response = await fetch(`${API_BASE}/system/reload-formulas-variables`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!response.ok) throw new Error('Failed to reload formulas/variables');
+  return response.json();
+};
+
 export const api = {
     // Helper để gọi raw request từ bên ngoài nếu cần
     request: request,
