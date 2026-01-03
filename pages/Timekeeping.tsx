@@ -175,9 +175,30 @@ const Timekeeping: React.FC = () => {
         if (currentUser.roles.includes(UserRole.KE_TOAN_LUONG)) {
             baseDepts = departments.filter(d => currentUser.assignedDeptIds?.includes(d.id));
         } else {
-            const supervisorDepts = departments.filter(d => d.managerId === currentUser.id || d.blockDirectorId === currentUser.id || d.hrId === currentUser.id);
-            if (supervisorDepts.length > 0) baseDepts = supervisorDepts;
-            else baseDepts = departments.filter(d => d.id === currentUser.currentDeptId || d.id === currentUser.sideDeptId);
+            // Ưu tiên lấy phòng ban hiện tại của user trước
+            const currentDept = currentUser.currentDeptId ? departments.find(d => d.id === currentUser.currentDeptId) : null;
+            const sideDept = currentUser.sideDeptId ? departments.find(d => d.id === currentUser.sideDeptId) : null;
+            
+            // Kiểm tra xem user có phải là manager/hr/gdk của phòng ban hiện tại không
+            const isManagerOfCurrentDept = currentDept && currentDept.managerId === currentUser.id;
+            const isHROfCurrentDept = currentDept && currentDept.hrId === currentUser.id;
+            const isGDKOfCurrentDept = currentDept && currentDept.blockDirectorId === currentUser.id;
+            const isManagerOfSideDept = sideDept && sideDept.managerId === currentUser.id;
+            const isHROfSideDept = sideDept && sideDept.hrId === currentUser.id;
+            const isGDKOfSideDept = sideDept && sideDept.blockDirectorId === currentUser.id;
+            
+            // Nếu user là manager/hr/gdk của phòng ban hiện tại, chỉ lấy phòng ban đó
+            if (isManagerOfCurrentDept || isHROfCurrentDept || isGDKOfCurrentDept) {
+                baseDepts = currentDept ? [currentDept] : [];
+                if (sideDept && (isManagerOfSideDept || isHROfSideDept || isGDKOfSideDept)) {
+                    baseDepts.push(sideDept);
+                }
+            } else if (isManagerOfSideDept || isHROfSideDept || isGDKOfSideDept) {
+                baseDepts = sideDept ? [sideDept] : [];
+            } else {
+                // Fallback: lấy phòng ban hiện tại của user (không cần là manager)
+                baseDepts = departments.filter(d => d.id === currentUser.currentDeptId || d.id === currentUser.sideDeptId);
+            }
         }
     }
     return baseDepts;

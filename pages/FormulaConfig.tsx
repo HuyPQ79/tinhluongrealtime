@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Save, Plus, Trash2, Edit, Sigma, Briefcase, DollarSign, X, Calculator, 
   Info, CheckCircle, Clock, BookOpen, Search, ListChecks, ShieldCheck, 
-  Zap, AlertTriangle, Database, HardDrive, RotateCcw, FileText, Download, Upload, Server, ShieldAlert
+  Zap, AlertTriangle, Database, HardDrive, RotateCcw, FileText, Download, Upload, Server, ShieldAlert, Loader2
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { DailyWorkItem, SalaryFormula, SalaryVariable, UserRole, RecordStatus, ApprovalStep, SystemRole, ApprovalWorkflow } from '../types';
@@ -46,6 +46,14 @@ const FormulaConfig: React.FC = () => {
 
   const [isVarModalOpen, setIsVarModalOpen] = useState(false);
   const [editingVar, setEditingVar] = useState<SalaryVariable | null>(null);
+  
+  // Local state cho maxHoursForHRReview để dễ chỉnh sửa
+  const [maxHoursInput, setMaxHoursInput] = useState<string>('');
+  const [isSavingMaxHours, setIsSavingMaxHours] = useState(false);
+  
+  // Local state cho maxHoursForHRReview để dễ chỉnh sửa
+  const [maxHoursInput, setMaxHoursInput] = useState<string>('');
+  const [isSavingMaxHours, setIsSavingMaxHours] = useState(false);
 
   // SystemRoles & ApprovalWorkflows
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
@@ -443,20 +451,64 @@ const FormulaConfig: React.FC = () => {
                                 <p className="text-xs text-slate-400 mt-1">Thời gian tối đa (tính bằng giờ) mà HR có thể thực hiện hậu kiểm sau khi bản ghi được phê duyệt</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-4 flex-wrap">
                             <input
                                 type="number"
                                 min="1"
                                 max="168"
-                                value={systemConfig.maxHoursForHRReview || 72}
+                                step="1"
+                                value={maxHoursInput || systemConfig.maxHoursForHRReview || 72}
                                 onChange={(e) => {
-                                    const value = Math.max(1, Math.min(168, Number(e.target.value) || 72));
-                                    updateSystemConfig({ ...systemConfig, maxHoursForHRReview: value });
+                                    // Cho phép nhập tự do, không clamp ngay
+                                    setMaxHoursInput(e.target.value);
                                 }}
-                                className="w-32 px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl font-black text-indigo-600 text-center focus:border-indigo-500 outline-none"
+                                onBlur={(e) => {
+                                    // Validate và clamp giá trị khi blur
+                                    const value = Number(e.target.value);
+                                    const clampedValue = Math.max(1, Math.min(168, isNaN(value) || value <= 0 ? 72 : value));
+                                    setMaxHoursInput(String(clampedValue));
+                                }}
+                                onFocus={(e) => {
+                                    // Set giá trị hiện tại khi focus
+                                    setMaxHoursInput(String(systemConfig.maxHoursForHRReview || 72));
+                                }}
+                                className="w-32 px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl font-black text-indigo-600 text-center focus:border-indigo-500 outline-none touch-manipulation"
+                                disabled={!isAdmin || isSavingMaxHours}
                             />
                             <span className="text-sm font-bold text-slate-600">giờ</span>
                             <span className="text-xs text-slate-400 italic">(Mặc định: 72 giờ = 3 ngày)</span>
+                            {isAdmin && (
+                                <button
+                                    onClick={async () => {
+                                        const value = Number(maxHoursInput || systemConfig.maxHoursForHRReview || 72);
+                                        const clampedValue = Math.max(1, Math.min(168, isNaN(value) || value <= 0 ? 72 : value));
+                                        
+                                        setIsSavingMaxHours(true);
+                                        try {
+                                            await updateSystemConfig({ ...systemConfig, maxHoursForHRReview: clampedValue });
+                                            setMaxHoursInput(String(clampedValue));
+                                        } catch (error) {
+                                            console.error('Error saving maxHoursForHRReview:', error);
+                                        } finally {
+                                            setIsSavingMaxHours(false);
+                                        }
+                                    }}
+                                    disabled={isSavingMaxHours}
+                                    className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-black text-sm hover:bg-indigo-700 active:scale-95 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    {isSavingMaxHours ? (
+                                        <>
+                                            <Loader2 size={16} className="animate-spin"/>
+                                            <span>Đang lưu...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Save size={16}/>
+                                            <span>Lưu</span>
+                                        </>
+                                    )}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

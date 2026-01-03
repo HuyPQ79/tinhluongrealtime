@@ -248,9 +248,12 @@ const createCrud = (
       }
     });
 
-    app.post(`/api/${route}`, async (req, res) => {
+    app.post(`/api/${route}`, async (req: AuthRequest, res) => {
       try {
         const data = mapIn(req.body || {});
+        const currentUser = req.currentUser;
+        let item: any;
+        let isUpdate = false;
         
         // Xử lý đặc biệt cho salaryFormula (dùng code làm unique key)
         if (modelName === 'salaryFormula') {
@@ -259,15 +262,16 @@ const createCrud = (
             data.code = data.id ? `F${data.id}` : `F${Date.now()}`;
           }
           
-          const item = await model.upsert({
+          // Kiểm tra xem có tồn tại không
+          const existing = await model.findUnique({ where: { code: data.code } });
+          isUpdate = !!existing;
+          
+          item = await model.upsert({
             where: { code: data.code },
             update: { ...data, id: data.id || undefined },
             create: { ...data, id: data.id || `F${Date.now()}` },
           });
-          return res.json(mapOut(item));
-        }
-        
-        if (data?.id) {
+        } else if (data?.id) {
           // Xử lý createdAt riêng cho evaluationRequest (có @default(now()) trong schema)
           let updateData: any = data;
           let createData: any = data;
@@ -285,25 +289,70 @@ const createCrud = (
             }
           }
           
-          const item = await model.upsert({
+          // Kiểm tra xem có tồn tại không
+          const existing = await model.findUnique({ where: { id: data.id } });
+          isUpdate = !!existing;
+          
+          item = await model.upsert({
             where: { id: data.id },
             update: updateData,
             create: createData,
           });
-          return res.json(mapOut(item));
+        } else {
+          item = await model.create({
+            data: { ...data, id: `rec_${Date.now()}` },
+          });
         }
-        const created = await model.create({
-          data: { ...data, id: `rec_${Date.now()}` },
-        });
-        res.json(mapOut(created));
+        
+        // Ghi audit log
+        const actionName = isUpdate ? 'UPDATE' : 'CREATE';
+        const entityName = modelName.toUpperCase().replace(/([A-Z])/g, '_$1').replace(/^_/, '');
+        const itemName = (item as any).name || (item as any).code || (item as any).id || 'Unknown';
+        
+        await createAuditLog(
+          `${actionName}_${entityName}`,
+          currentUser?.name || 'System',
+          currentUser?.id,
+          `${isUpdate ? 'Cập nhật' : 'Tạo mới'} ${modelName}: ${itemName}`,
+          entityName,
+          item.id
+        );
+        
+        res.json(mapOut(item));
       } catch (e: any) {
         res.status(500).json({ message: e.message || 'Server error' });
       }
     });
 
-    app.delete(`/api/${route}/:id`, async (req, res) => {
+    app.delete(`/api/${route}/:id`, async (req: AuthRequest, res) => {
       try {
-        await model.delete({ where: { id: req.params.id } });
+        const currentUser = req.currentUser;
+        const id = req.params.id;
+        
+        // Lấy thông tin item trước khi xóa để ghi audit log
+        let itemName = id;
+        try {
+          const item = await model.findUnique({ where: { id } });
+          if (item) {
+            itemName = ((item as any).name || (item as any).code || id) as string;
+          }
+        } catch (e) {
+          // Ignore error
+        }
+        
+        await model.delete({ where: { id } });
+        
+        // Ghi audit log
+        const entityName = modelName.toUpperCase().replace(/([A-Z])/g, '_$1').replace(/^_/, '');
+        await createAuditLog(
+          `DELETE_${entityName}`,
+          currentUser?.name || 'System',
+          currentUser?.id,
+          `Xóa ${modelName}: ${itemName}`,
+          entityName,
+          id
+        );
+        
         res.json({ success: true });
       } catch (e: any) {
         res.status(500).json({ message: e.message || 'Server error' });
@@ -723,6 +772,7 @@ app.post('/api/config/system', async (req: AuthRequest, res) => {
       standardWorkDays: body.standardWorkDays ?? 26,
       insuranceBaseSalary: body.insuranceBaseSalary ?? 0,
       maxInsuranceBase: body.maxInsuranceBase ?? 0,
+      maxHoursForHRReview: body.maxHoursForHRReview ?? 72, // Lưu số giờ tối đa HR hậu kiểm
       pitSteps: body.pitSteps ?? [],
       seniorityRules: body.seniorityRules ?? [],
       systemRoles: body.systemRoles ?? null, // Lưu SystemRoles vào DB
@@ -796,59 +846,100 @@ app.get('/api/users', async (req: AuthRequest, res) => {
             }
         } else if (req.currentUser?.roles?.includes('QUAN_LY')) {
             // Trưởng phòng: chỉ thấy user trong phòng ban mình quản lý
-            // Tìm các phòng ban mà user này là manager
-            const deptsManaged = await prisma.department.findMany({
-                where: { managerId: req.currentUser.id },
-                select: { id: true }
-            });
-            const deptIds = deptsManaged.map(d => d.id);
+            // Ưu tiên kiểm tra phòng ban hiện tại của user trước
+            const currentUserDept = req.currentUser.currentDeptId 
+                ? await prisma.department.findUnique({ where: { id: req.currentUser.currentDeptId }, select: { id: true, managerId: true } })
+                : null;
             
-            if (deptIds.length > 0) {
+            // Chỉ lấy phòng ban mà user là manager VÀ là phòng ban hiện tại của user
+            if (currentUserDept && currentUserDept.managerId === req.currentUser.id) {
                 where = {
                     OR: [
-                        { currentDeptId: { in: deptIds } },
-                        { sideDeptId: { in: deptIds } }
+                        { currentDeptId: currentUserDept.id },
+                        { sideDeptId: currentUserDept.id }
                     ]
                 };
             } else {
-                // Không quản lý phòng ban nào -> chỉ thấy chính mình
-                where = { id: req.currentUser.id };
+                // Kiểm tra phòng ban kiêm nhiệm
+                const sideUserDept = req.currentUser.sideDeptId 
+                    ? await prisma.department.findUnique({ where: { id: req.currentUser.sideDeptId }, select: { id: true, managerId: true } })
+                    : null;
+                
+                if (sideUserDept && sideUserDept.managerId === req.currentUser.id) {
+                    where = {
+                        OR: [
+                            { currentDeptId: sideUserDept.id },
+                            { sideDeptId: sideUserDept.id }
+                        ]
+                    };
+                } else {
+                    // Không quản lý phòng ban hiện tại -> chỉ thấy chính mình
+                    where = { id: req.currentUser.id };
+                }
             }
         } else if (req.currentUser?.roles?.includes('GIAM_DOC_KHOI')) {
             // Giám đốc khối: thấy user trong các phòng ban mình quản lý
-            const deptsManaged = await prisma.department.findMany({
-                where: { blockDirectorId: req.currentUser.id },
-                select: { id: true }
-            });
-            const deptIds = deptsManaged.map(d => d.id);
+            // Ưu tiên kiểm tra phòng ban hiện tại của user trước
+            const currentUserDept = req.currentUser.currentDeptId 
+                ? await prisma.department.findUnique({ where: { id: req.currentUser.currentDeptId }, select: { id: true, blockDirectorId: true } })
+                : null;
             
-            if (deptIds.length > 0) {
+            // Chỉ lấy phòng ban mà user là blockDirector VÀ là phòng ban hiện tại của user
+            if (currentUserDept && currentUserDept.blockDirectorId === req.currentUser.id) {
                 where = {
                     OR: [
-                        { currentDeptId: { in: deptIds } },
-                        { sideDeptId: { in: deptIds } }
+                        { currentDeptId: currentUserDept.id },
+                        { sideDeptId: currentUserDept.id }
                     ]
                 };
             } else {
-                where = { id: req.currentUser.id };
+                // Kiểm tra phòng ban kiêm nhiệm
+                const sideUserDept = req.currentUser.sideDeptId 
+                    ? await prisma.department.findUnique({ where: { id: req.currentUser.sideDeptId }, select: { id: true, blockDirectorId: true } })
+                    : null;
+                
+                if (sideUserDept && sideUserDept.blockDirectorId === req.currentUser.id) {
+                    where = {
+                        OR: [
+                            { currentDeptId: sideUserDept.id },
+                            { sideDeptId: sideUserDept.id }
+                        ]
+                    };
+                } else {
+                    where = { id: req.currentUser.id };
+                }
             }
         } else if (req.currentUser?.roles?.includes('NHAN_SU')) {
             // Nhân sự: thấy user trong các phòng ban mình phụ trách
-            const deptsManaged = await prisma.department.findMany({
-                where: { hrId: req.currentUser.id },
-                select: { id: true }
-            });
-            const deptIds = deptsManaged.map(d => d.id);
+            // Ưu tiên kiểm tra phòng ban hiện tại của user trước
+            const currentUserDept = req.currentUser.currentDeptId 
+                ? await prisma.department.findUnique({ where: { id: req.currentUser.currentDeptId }, select: { id: true, hrId: true } })
+                : null;
             
-            if (deptIds.length > 0) {
+            // Chỉ lấy phòng ban mà user là hrId VÀ là phòng ban hiện tại của user
+            if (currentUserDept && currentUserDept.hrId === req.currentUser.id) {
                 where = {
                     OR: [
-                        { currentDeptId: { in: deptIds } },
-                        { sideDeptId: { in: deptIds } }
+                        { currentDeptId: currentUserDept.id },
+                        { sideDeptId: currentUserDept.id }
                     ]
                 };
             } else {
-                where = { id: req.currentUser.id };
+                // Kiểm tra phòng ban kiêm nhiệm
+                const sideUserDept = req.currentUser.sideDeptId 
+                    ? await prisma.department.findUnique({ where: { id: req.currentUser.sideDeptId }, select: { id: true, hrId: true } })
+                    : null;
+                
+                if (sideUserDept && sideUserDept.hrId === req.currentUser.id) {
+                    where = {
+                        OR: [
+                            { currentDeptId: sideUserDept.id },
+                            { sideDeptId: sideUserDept.id }
+                        ]
+                    };
+                } else {
+                    where = { id: req.currentUser.id };
+                }
             }
         }
         
@@ -998,9 +1089,10 @@ app.get('/api/attendance', async (req: AuthRequest, res) => {
         res.status(500).json({ error: e.message }); 
     }
 });
-app.post('/api/attendance', async (req, res) => {
+app.post('/api/attendance', async (req: AuthRequest, res) => {
     try {
         const data = req.body; 
+        const currentUser = req.currentUser;
         const records = Array.isArray(data) ? data : [data]; 
         const results = [];
         const monthsToRecalculate = new Set<string>();
@@ -1025,11 +1117,44 @@ app.post('/api/attendance', async (req, res) => {
                 sentToHrAt: rec.sentToHrAt ? new Date(rec.sentToHrAt) : null,
                 rejectionReason: rec.rejectionReason || null,
             };
+            
+            // Kiểm tra xem record đã tồn tại chưa
+            const existing = await prisma.attendanceRecord.findUnique({
+                where: { userId_date: { userId: cleanRec.userId, date: cleanRec.date } }
+            });
+            const isUpdate = !!existing;
+            
             const saved = await prisma.attendanceRecord.upsert({ 
                 where: { userId_date: { userId: cleanRec.userId, date: cleanRec.date } }, 
                 update: cleanRec, 
                 create: cleanRec 
             });
+            
+            // Ghi audit log
+            const user = await prisma.user.findUnique({ where: { id: saved.userId }, select: { name: true } });
+            const actionName = isUpdate ? 'UPDATE_ATTENDANCE' : 'CREATE_ATTENDANCE';
+            let details = `${isUpdate ? 'Cập nhật' : 'Tạo mới'} chấm công cho ${user?.name || saved.userId} ngày ${saved.date}`;
+            
+            // Nếu có thay đổi status, ghi thêm thông tin
+            if (saved.status && saved.status !== 'DRAFT') {
+                if (saved.status === 'APPROVED') {
+                    details += ' - Đã phê duyệt';
+                } else if (saved.status === 'REJECTED') {
+                    details += ` - Đã từ chối${saved.rejectionReason ? `. Lý do: ${saved.rejectionReason}` : ''}`;
+                } else if (saved.status.startsWith('PENDING')) {
+                    details += ` - Gửi chờ phê duyệt (${saved.status})`;
+                }
+            }
+            
+            await createAuditLog(
+                actionName,
+                currentUser?.name || 'System',
+                currentUser?.id,
+                details,
+                'ATTENDANCE',
+                saved.id
+            );
+            
             results.push(saved);
             
             // Nếu status là APPROVED, thêm tháng vào danh sách cần tính lại lương
@@ -1145,9 +1270,10 @@ app.get('/api/salary-records', async (req: AuthRequest, res) => {
   }
 });
 
-app.post('/api/salary-records', async (req, res) => {
+app.post('/api/salary-records', async (req: AuthRequest, res) => {
   try {
     const body = req.body || {};
+    const currentUser = req.currentUser;
     if (!body.userId || !body.date) {
       return res.status(400).json({ message: 'Thiếu userId hoặc date (YYYY-MM)' });
     }
@@ -1197,6 +1323,12 @@ app.post('/api/salary-records', async (req, res) => {
       rejectionReason: dbData.rejectionReason || null,
     };
     
+    // Kiểm tra xem record đã tồn tại chưa
+    const existing = await prisma.salaryRecord.findUnique({
+      where: { userId_date: { userId: cleanData.userId, date: cleanData.date } }
+    });
+    const isUpdate = !!existing;
+    
     const record = await prisma.salaryRecord.upsert({
       where: { userId_date: { userId: cleanData.userId, date: cleanData.date } },
       update: cleanData,
@@ -1208,6 +1340,28 @@ app.post('/api/salary-records', async (req, res) => {
       where: { id: record.userId },
       include: { department: true }
     });
+    
+    // Ghi audit log
+    const actionName = isUpdate ? 'UPDATE_SALARY' : 'CREATE_SALARY';
+    let details = `${isUpdate ? 'Cập nhật' : 'Tạo mới'} bảng lương cho ${user?.name || record.userId} tháng ${record.date}`;
+    if (record.status && record.status !== 'DRAFT') {
+      if (record.status === 'APPROVED') {
+        details += ' - Đã phê duyệt';
+      } else if (record.status === 'REJECTED') {
+        details += ` - Đã từ chối${record.rejectionReason ? `. Lý do: ${record.rejectionReason}` : ''}`;
+      } else if (record.status.startsWith('PENDING')) {
+        details += ` - Gửi chờ phê duyệt (${record.status})`;
+      }
+    }
+    
+    await createAuditLog(
+      actionName,
+      currentUser?.name || 'System',
+      currentUser?.id,
+      details,
+      'SALARY',
+      record.id
+    );
     
     const response = {
       ...record,
@@ -1752,6 +1906,20 @@ app.post('/api/salary-records/:id/adjustments', async (req: AuthRequest, res) =>
       },
     });
     
+    // Ghi audit log
+    const adjTypeName = newAdjustment.type === 'ALLOWANCE' ? 'Phụ cấp' : 
+                        newAdjustment.type === 'BONUS' ? 'Thưởng' :
+                        newAdjustment.type === 'OTHER_SALARY' ? 'Lương khác' :
+                        newAdjustment.type === 'OTHER_DEDUCTION' ? 'Khấu trừ' : 'Điều chỉnh';
+    await createAuditLog(
+      'ADD_SALARY_ADJUSTMENT',
+      currentUser?.name || 'System',
+      currentUser?.id,
+      `Thêm điều chỉnh ${adjTypeName} (${newAdjustment.amount?.toLocaleString('vi-VN') || 0} VNĐ) vào bảng lương cho ${adjUserName?.name || record.userId} tháng ${record.date}`,
+      'SALARY',
+      id
+    );
+    
     res.json(updated);
   } catch (e: any) {
     console.error("Error adding adjustment:", e);
@@ -1760,7 +1928,7 @@ app.post('/api/salary-records/:id/adjustments', async (req: AuthRequest, res) =>
 });
 
 // Xóa điều chỉnh - BUG FIX: Tìm deletedAdj TRƯỚC KHI filter
-app.delete('/api/salary-records/:id/adjustments/:adjId', async (req, res) => {
+app.delete('/api/salary-records/:id/adjustments/:adjId', async (req: AuthRequest, res) => {
   try {
     const { id, adjId } = req.params;
     
@@ -1856,6 +2024,23 @@ app.delete('/api/salary-records/:id/adjustments/:adjId', async (req, res) => {
       },
     });
     
+    // Ghi audit log
+    const currentUser = (req as AuthRequest).currentUser;
+    if (deletedAdj) {
+      const adjTypeName = deletedAdj.type === 'ALLOWANCE' ? 'Phụ cấp' : 
+                          deletedAdj.type === 'BONUS' ? 'Thưởng' :
+                          deletedAdj.type === 'OTHER_SALARY' ? 'Lương khác' :
+                          deletedAdj.type === 'OTHER_DEDUCTION' ? 'Khấu trừ' : 'Điều chỉnh';
+      await createAuditLog(
+        'DELETE_SALARY_ADJUSTMENT',
+        currentUser?.name || 'System',
+        currentUser?.id,
+        `Xóa điều chỉnh ${adjTypeName} (${deletedAdj.amount?.toLocaleString('vi-VN') || 0} VNĐ) khỏi bảng lương cho ${user?.name || record.userId} tháng ${record.date}`,
+        'SALARY',
+        id
+      );
+    }
+    
     res.json(updated);
   } catch (e: any) {
     console.error("Error deleting adjustment:", e);
@@ -1864,10 +2049,11 @@ app.delete('/api/salary-records/:id/adjustments/:adjId', async (req, res) => {
 });
 
 // Cập nhật tạm ứng
-app.put('/api/salary-records/:id/advance-payment', async (req, res) => {
+app.put('/api/salary-records/:id/advance-payment', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { amount } = req.body;
+    const currentUser = req.currentUser;
     
     const record = await prisma.salaryRecord.findUnique({ where: { id } });
     if (!record) {
@@ -1875,6 +2061,7 @@ app.put('/api/salary-records/:id/advance-payment', async (req, res) => {
     }
     
     const user = await prisma.user.findUnique({ where: { id: record.userId } });
+    const oldAdvancePayment = Number(record.advancePayment || 0);
     const systemConfig = await prisma.systemConfig.findUnique({ where: { id: 'default_config' } });
     const configExtra = (systemConfig?.insuranceRules as any) || {};
     const insuranceRate = configExtra.insuranceRate ?? 10.5;
@@ -1914,6 +2101,16 @@ app.put('/api/salary-records/:id/advance-payment', async (req, res) => {
         netSalary,
       },
     });
+    
+    // Ghi audit log
+    await createAuditLog(
+      'UPDATE_ADVANCE_PAYMENT',
+      currentUser?.name || 'System',
+      currentUser?.id,
+      `Cập nhật tạm ứng cho ${user?.name || record.userId} tháng ${record.date}: ${oldAdvancePayment.toLocaleString('vi-VN')} → ${advancePayment.toLocaleString('vi-VN')} VNĐ`,
+      'SALARY',
+      id
+    );
     
     res.json(updated);
   } catch (e: any) {
@@ -2023,9 +2220,10 @@ app.get('/api/approval-workflows', async (req, res) => {
   }
 });
 
-app.post('/api/approval-workflows', async (req, res) => {
+app.post('/api/approval-workflows', async (req: AuthRequest, res) => {
   try {
     const body = req.body || {};
+    const currentUser = req.currentUser;
     
     // Chuẩn hóa dữ liệu
     const cleanData: any = {
@@ -2039,6 +2237,10 @@ app.post('/api/approval-workflows', async (req, res) => {
       effectiveTo: body.effectiveTo ? new Date(body.effectiveTo) : null,
       version: body.version || 1,
     };
+    
+    // Kiểm tra xem workflow đã tồn tại chưa
+    const existing = body.id ? await prisma.approvalWorkflow.findUnique({ where: { id: body.id } }) : null;
+    const isUpdate = !!existing;
     
     // Nếu đang tạo workflow mới, đóng các workflow cũ cùng contentType
     if (!body.id && body.contentType) {
@@ -2058,6 +2260,19 @@ app.post('/api/approval-workflows', async (req, res) => {
       update: cleanData,
       create: cleanData,
     });
+    
+    // Ghi audit log
+    const contentTypeName = cleanData.contentType === 'ATTENDANCE' ? 'Chấm công' : 
+                            cleanData.contentType === 'SALARY' ? 'Bảng lương' : 
+                            cleanData.contentType;
+    await createAuditLog(
+      isUpdate ? 'UPDATE_APPROVAL_WORKFLOW' : 'CREATE_APPROVAL_WORKFLOW',
+      currentUser?.name || 'System',
+      currentUser?.id,
+      `${isUpdate ? 'Cập nhật' : 'Tạo mới'} luồng phê duyệt cho ${contentTypeName} (Version ${cleanData.version})`,
+      'APPROVAL_WORKFLOW',
+      workflow.id
+    );
     
     res.json({
       ...workflow,

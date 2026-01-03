@@ -53,7 +53,36 @@ const Dashboard: React.FC = () => {
         setViewMode('ADMIN');
         const initialDepts = hasRole(currentUser!, [UserRole.ADMIN, UserRole.BAN_LANH_DAO]) 
             ? departments.map(d => d.id)
-            : departments.filter(d => d.managerId === currentUser?.id || d.blockDirectorId === currentUser?.id || d.hrId === currentUser?.id || currentUser?.assignedDeptIds?.includes(d.id)).map(d => d.id);
+            : (() => {
+                // Ưu tiên lấy phòng ban hiện tại của user
+                const currentDept = currentUser?.currentDeptId ? departments.find(d => d.id === currentUser.currentDeptId) : null;
+                const sideDept = currentUser?.sideDeptId ? departments.find(d => d.id === currentUser.sideDeptId) : null;
+                
+                // Kiểm tra xem user có phải là manager/hr/gdk của phòng ban hiện tại không
+                const isManagerOfCurrentDept = currentDept && currentDept.managerId === currentUser?.id;
+                const isHROfCurrentDept = currentDept && currentDept.hrId === currentUser?.id;
+                const isGDKOfCurrentDept = currentDept && currentDept.blockDirectorId === currentUser?.id;
+                const isManagerOfSideDept = sideDept && sideDept.managerId === currentUser?.id;
+                const isHROfSideDept = sideDept && sideDept.hrId === currentUser?.id;
+                const isGDKOfSideDept = sideDept && sideDept.blockDirectorId === currentUser?.id;
+                
+                // Nếu user là manager/hr/gdk của phòng ban hiện tại, chỉ lấy phòng ban đó
+                if (isManagerOfCurrentDept || isHROfCurrentDept || isGDKOfCurrentDept) {
+                    const deptIds = currentDept ? [currentDept.id] : [];
+                    if (sideDept && (isManagerOfSideDept || isHROfSideDept || isGDKOfSideDept)) {
+                        deptIds.push(sideDept.id);
+                    }
+                    return deptIds;
+                } else if (isManagerOfSideDept || isHROfSideDept || isGDKOfSideDept) {
+                    return sideDept ? [sideDept.id] : [];
+                } else if (currentUser?.assignedDeptIds && currentUser.assignedDeptIds.length > 0) {
+                    // Kế toán lương: lấy theo assignedDeptIds
+                    return currentUser.assignedDeptIds;
+                } else {
+                    // Fallback: lấy phòng ban hiện tại của user
+                    return departments.filter(d => d.id === currentUser?.currentDeptId || d.id === currentUser?.sideDeptId).map(d => d.id);
+                }
+            })();
         setSelectedDeptIds(initialDepts);
     }
     else setViewMode('PERSONAL');
@@ -72,7 +101,36 @@ const Dashboard: React.FC = () => {
   const selectAllDepts = () => {
     const all = hasRole(currentUser!, [UserRole.ADMIN, UserRole.BAN_LANH_DAO]) 
         ? departments.map(d => d.id)
-        : departments.filter(d => d.managerId === currentUser?.id || d.blockDirectorId === currentUser?.id || d.hrId === currentUser?.id || currentUser?.assignedDeptIds?.includes(d.id)).map(d => d.id);
+        : (() => {
+            // Ưu tiên lấy phòng ban hiện tại của user
+            const currentDept = currentUser?.currentDeptId ? departments.find(d => d.id === currentUser.currentDeptId) : null;
+            const sideDept = currentUser?.sideDeptId ? departments.find(d => d.id === currentUser.sideDeptId) : null;
+            
+            // Kiểm tra xem user có phải là manager/hr/gdk của phòng ban hiện tại không
+            const isManagerOfCurrentDept = currentDept && currentDept.managerId === currentUser?.id;
+            const isHROfCurrentDept = currentDept && currentDept.hrId === currentUser?.id;
+            const isGDKOfCurrentDept = currentDept && currentDept.blockDirectorId === currentUser?.id;
+            const isManagerOfSideDept = sideDept && sideDept.managerId === currentUser?.id;
+            const isHROfSideDept = sideDept && sideDept.hrId === currentUser?.id;
+            const isGDKOfSideDept = sideDept && sideDept.blockDirectorId === currentUser?.id;
+            
+            // Nếu user là manager/hr/gdk của phòng ban hiện tại, chỉ lấy phòng ban đó
+            if (isManagerOfCurrentDept || isHROfCurrentDept || isGDKOfCurrentDept) {
+                const deptIds = currentDept ? [currentDept.id] : [];
+                if (sideDept && (isManagerOfSideDept || isHROfSideDept || isGDKOfSideDept)) {
+                    deptIds.push(sideDept.id);
+                }
+                return deptIds;
+            } else if (isManagerOfSideDept || isHROfSideDept || isGDKOfSideDept) {
+                return sideDept ? [sideDept.id] : [];
+            } else if (currentUser?.assignedDeptIds && currentUser.assignedDeptIds.length > 0) {
+                // Kế toán lương: lấy theo assignedDeptIds
+                return currentUser.assignedDeptIds;
+            } else {
+                // Fallback: lấy phòng ban hiện tại của user
+                return departments.filter(d => d.id === currentUser?.currentDeptId || d.id === currentUser?.sideDeptId).map(d => d.id);
+            }
+        })();
     setSelectedDeptIds(all);
   };
 
