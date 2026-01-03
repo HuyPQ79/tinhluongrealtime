@@ -262,6 +262,7 @@ const createCrud = (
         const currentUser = req.currentUser;
         let item: any;
         let isUpdate = false;
+        let oldStatus: string | null = null; // Khai báo oldStatus ở đây để có thể sử dụng ở mọi nơi
         
         // Xử lý đặc biệt cho salaryFormula (dùng code làm unique key)
         if (modelName === 'salaryFormula') {
@@ -302,9 +303,8 @@ const createCrud = (
           isUpdate = !!existing;
           
           // Lấy oldStatus trước khi upsert (cho evaluationRequest)
-          let oldStatus = null;
           if (modelName === 'evaluationRequest' && existing) {
-            oldStatus = (existing as any).status;
+            oldStatus = (existing as any).status || null;
           }
           
           item = await model.upsert({
