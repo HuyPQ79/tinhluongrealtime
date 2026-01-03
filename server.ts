@@ -241,7 +241,15 @@ const createCrud = (
   routes.forEach((route) => {
     app.get(`/api/${route}`, async (req, res) => {
       try {
-        const rows = await model.findMany(opts?.findManyArgs || undefined);
+        let findManyArgs = opts?.findManyArgs || {};
+        // Nếu là auditLog, sort theo timestamp DESC (mới nhất lên trên)
+        if (modelName === 'auditLog') {
+          findManyArgs = {
+            ...findManyArgs,
+            orderBy: { timestamp: 'desc' }
+          };
+        }
+        const rows = await model.findMany(findManyArgs);
         res.json(Array.isArray(rows) ? rows.map(mapOut) : rows);
       } catch (e: any) {
         res.status(500).json({ message: e.message || 'Server error' });
@@ -679,14 +687,47 @@ app.post('/api/login', async (req, res) => {
     try {
       const { username, password } = req.body;
       const user = await prisma.user.findUnique({ where: { username } });
-      if (!user) return res.status(401).json({ success: false, message: 'Sai tài khoản' });
+      if (!user) {
+        // Ghi audit log cho đăng nhập thất bại
+        await createAuditLog(
+          'LOGIN_FAILED',
+          'System',
+          undefined,
+          `Đăng nhập thất bại: Tài khoản "${username}" không tồn tại`,
+          'AUTH',
+          undefined
+        );
+        return res.status(401).json({ success: false, message: 'Sai tài khoản' });
+      }
       const isMatch = user.password.startsWith('$2') ? await bcrypt.compare(password, user.password) : password === user.password;
       if (isMatch) {
         // @ts-ignore
         const token = jwt.sign({ id: user.id, roles: user.roles }, JWT_SECRET);
         const { password: _, ...userData } = user;
+        
+        // Ghi audit log cho đăng nhập thành công
+        await createAuditLog(
+          'LOGIN_SUCCESS',
+          user.name || user.username,
+          user.id,
+          `Đăng nhập thành công: ${user.name || user.username}`,
+          'AUTH',
+          user.id
+        );
+        
         res.json({ success: true, token, user: userData });
-      } else { res.status(401).json({ success: false, message: 'Sai mật khẩu' }); }
+      } else {
+        // Ghi audit log cho đăng nhập thất bại (sai mật khẩu)
+        await createAuditLog(
+          'LOGIN_FAILED',
+          user.name || user.username,
+          user.id,
+          `Đăng nhập thất bại: Sai mật khẩu cho tài khoản "${username}"`,
+          'AUTH',
+          user.id
+        );
+        res.status(401).json({ success: false, message: 'Sai mật khẩu' });
+      }
     } catch (error) { res.status(500).json({ success: false, message: 'Lỗi Server' }); }
 });
 
@@ -1795,6 +1836,16 @@ app.post('/api/salary-records/calculate', async (req: AuthRequest, res) => {
       results.push(salaryRecord);
     }
     
+    // Ghi audit log cho tính lương hàng loạt
+    await createAuditLog(
+      'CALCULATE_SALARY',
+      currentUser?.name || 'System',
+      currentUser?.id,
+      `Tính lương tự động cho tháng ${month}: ${results.length} bản ghi lương`,
+      'SALARY',
+      undefined
+    );
+    
     res.json({ success: true, count: results.length, records: results });
   } catch (e: any) {
     console.error("Error calculating salary:", e);
@@ -2296,8 +2347,9 @@ app.get('/api/seed-data-secret', async (req, res) => {
 });
 
 // API: Nạp lại công thức và biến số từ seeder (không cần chạy lại seeder)
-app.post('/api/system/reload-formulas-variables', async (req, res) => {
+app.post('/api/system/reload-formulas-variables', async (req: AuthRequest, res) => {
   try {
+    const currentUser = req.currentUser;
     const { INITIAL_FORMULAS, INITIAL_SALARY_VARIABLES } = await import('./seeder');
     
     // Nạp lại công thức
@@ -2353,6 +2405,16 @@ app.post('/api/system/reload-formulas-variables', async (req, res) => {
       });
       variablesCount++;
     }
+    
+    // Ghi audit log
+    await createAuditLog(
+      'RELOAD_FORMULAS_VARIABLES',
+      currentUser?.name || 'System',
+      currentUser?.id,
+      `Nạp lại công thức và biến số: ${formulasCount} công thức, ${variablesCount} biến số`,
+      'CONFIG',
+      undefined
+    );
     
     res.json({
       success: true,

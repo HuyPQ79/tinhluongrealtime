@@ -456,8 +456,16 @@ const MainLayout: React.FC = () => {
             <div className="flex-1 flex flex-col min-w-0">
                 <Header toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
                 <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-10 scroll-smooth relative bg-slate-50/50 safe-area-inset">
-                    <div className="max-w-[1600px] mx-auto">
-                        <Outlet />
+                    <div className="max-w-[1600px] mx-auto flex flex-col min-h-full">
+                        <div className="flex-1">
+                            <Outlet />
+                        </div>
+                        {/* Copyright Footer */}
+                        <footer className="mt-12 pt-6 border-t border-slate-200 text-center">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                                © 2025 HuyPQ.ThienSon - All Rights Reserved
+                            </p>
+                        </footer>
                     </div>
                 </main>
             </div>

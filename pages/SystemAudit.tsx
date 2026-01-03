@@ -35,13 +35,15 @@ const SystemAudit: React.FC = () => {
   const isAdmin = useMemo(() => hasRole(currentUser!, [UserRole.ADMIN]), [currentUser]);
 
   const filteredLogs = useMemo(() => {
-      return auditLogs.filter(log => {
+      const filtered = auditLogs.filter(log => {
           const matchSearch = log.details.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               log.actor.toLowerCase().includes(searchTerm.toLowerCase());
           const matchAction = filterAction === 'ALL' || log.action === filterAction;
           const matchDate = !filterDate || log.timestamp.startsWith(filterDate);
           return matchSearch && matchAction && matchDate;
       });
+      // Sort mới nhất lên trên (theo timestamp DESC)
+      return filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [auditLogs, searchTerm, filterAction, filterDate]);
 
   // Fix: Ensure uniqueActions is inferred as string[] to avoid unknown key/ReactNode errors
