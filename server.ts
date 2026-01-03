@@ -350,7 +350,7 @@ const createCrud = (
                 'EVALUATION',
                 item.id
               );
-            } else if (newStatus.startsWith('PENDING') && (!oldStatus.startsWith('PENDING') || oldStatus === 'DRAFT')) {
+            } else if (newStatus.startsWith('PENDING') && oldStatus && (!oldStatus.startsWith('PENDING') || oldStatus === 'DRAFT')) {
               await createAuditLog(
                 'SUBMIT_EVALUATION',
                 currentUser?.name || 'System',
@@ -1256,7 +1256,7 @@ app.post('/api/attendance', async (req: AuthRequest, res) => {
                         'ATTENDANCE',
                         saved.id
                     );
-                } else if (newStatus.startsWith('PENDING') && (!oldStatus.startsWith('PENDING') || oldStatus === 'DRAFT')) {
+                } else if (newStatus.startsWith('PENDING') && oldStatus && (!oldStatus.startsWith('PENDING') || oldStatus === 'DRAFT')) {
                     await createAuditLog(
                         'SUBMIT_ATTENDANCE',
                         currentUser?.name || 'System',
