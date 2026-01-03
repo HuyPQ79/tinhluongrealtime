@@ -738,6 +738,7 @@ app.get('/api/config/system', async (req, res) => {
       standardWorkDays: cfg?.standardWorkDays ?? 26,
       insuranceBaseSalary: Number(cfg?.insuranceBaseSalary || 0),
       maxInsuranceBase: Number(cfg?.maxInsuranceBase || 0),
+      maxHoursForHRReview: cfg?.maxHoursForHRReview ?? 72, // Số giờ tối đa cho HR hậu kiểm
       pitSteps: (cfg?.pitSteps as any) || extra.pitSteps || [],
       seniorityRules: seniorityRules,
       // Các field mở rộng (không có cột riêng trong DB)

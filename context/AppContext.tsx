@@ -15,6 +15,7 @@ const INITIAL_SYSTEM_CONFIG: SystemConfig = {
     standardWorkDays: 26,
     insuranceBaseSalary: 0,
     maxInsuranceBase: 0,
+    maxHoursForHRReview: 72, // Số giờ tối đa cho HR hậu kiểm (mặc định 72 giờ = 3 ngày)
     isPeriodLocked: false,
     autoApproveDays: 3,
     hrAutoApproveHours: 24,

@@ -1,141 +1,134 @@
-# BÁO CÁO KIỂM TRA ĐỒNG BỘ FRONTEND - BACKEND - DATABASE
+# BÁO CÁO KIỂM TRA ĐỒNG BỘ FRONTEND, BACKEND, DATABASE
 
-## 📋 TỔNG QUAN
+## Ngày kiểm tra: 2025-01-02
 
-**Ngày kiểm tra:** 2025-01-XX  
-**Phạm vi:** Frontend, Backend, Database Schema
+### 1. KIỂM TRA `maxHoursForHRReview`
 
----
+#### ✅ Database (Prisma Schema)
+- **File**: `prisma/schema.prisma`
+- **Dòng**: 217
+- **Trạng thái**: ✅ Đã có
+- **Chi tiết**: 
+  ```prisma
+  maxHoursForHRReview Int @default(72) // Số giờ tối đa cho HR hậu kiểm
+  ```
 
-## ✅ KIỂM TRA ĐỒNG BỘ
+#### ✅ Migration
+- **File**: `prisma/migrations/20260102095309_add_max_hours_for_hr_review/migration.sql`
+- **Trạng thái**: ✅ Đã có
+- **Chi tiết**: 
+  ```sql
+  ALTER TABLE `system_configs` ADD COLUMN `maxHoursForHRReview` INTEGER NOT NULL DEFAULT 72;
+  ```
 
-### 1. **Database Schema (Prisma)**
+#### ✅ Backend (Server)
+- **File**: `server.ts`
+- **GET `/api/config/system`**: ✅ Đã thêm `maxHoursForHRReview` vào response (dòng 741)
+- **POST `/api/config/system`**: ✅ Đã xử lý `maxHoursForHRReview` trong `known` object (dòng 775)
+- **Default value**: ✅ Đã có trong default config (dòng 709)
+- **Audit log**: ✅ Đã có (dòng 808)
 
-#### 1.1. Models đã có migrations:
-- ✅ `rejectionReason` trong `EvaluationRequest`, `AttendanceRecord`, `SalaryRecord` (migration: `20251231184935_init_db_chuan`)
-- ✅ `targetField` trong `SalaryFormula` (migration: `20251231184935_init_db_chuan`)
-- ✅ `maxHoursForHRReview` trong `SystemConfig` (migration: `20260102095309_add_max_hours_for_hr_review`)
-- ✅ `systemRoles` trong `SystemConfig` (migration: `20260102051843_add_approval_workflow_and_system_roles`)
-- ✅ `ApprovalWorkflow` model (migration: `20260102051843_add_approval_workflow_and_system_roles`)
-- ✅ `AuditLog` fields: `actorId`, `entityId`, `entityType` (migration: `20260102051843_add_approval_workflow_and_system_roles`)
-- ✅ `SalaryFormula` với `code`, `area`, `targetField` (migration: `20251231184935_init_db_chuan`)
-- ✅ `SalaryVariable` với `code`, `name`, `group`, `description` (migration: `20251231184935_init_db_chuan`)
+#### ✅ Frontend (Types)
+- **File**: `types.ts`
+- **Dòng**: 140
+- **Trạng thái**: ✅ Đã có
+- **Chi tiết**: 
+  ```typescript
+  maxHoursForHRReview?: number; // Số giờ tối đa cho HR hậu kiểm (mặc định 72 giờ)
+  ```
 
-#### 1.2. Các thay đổi gần đây (KHÔNG ảnh hưởng DB):
-- ✅ Mobile optimization (CSS/styling) - chỉ frontend
-- ✅ ConfirmationModal component - chỉ frontend
-- ✅ Admin check logic - chỉ frontend
+#### ✅ Frontend (Context)
+- **File**: `context/AppContext.tsx`
+- **INITIAL_SYSTEM_CONFIG**: ✅ Đã thêm `maxHoursForHRReview: 72`
 
-### 2. **Backend (server.ts)**
+#### ✅ Frontend (Component)
+- **File**: `pages/FormulaConfig.tsx`
+- **Trạng thái**: ✅ Đã có xử lý đầy đủ
+- **Chi tiết**:
+  - Local state: `maxHoursInput`, `isSavingMaxHours`
+  - Input field với validation (1-168 giờ)
+  - Nút Lưu với loading state
+  - Gọi `updateSystemConfig` để lưu vào DB
 
-#### 2.1. API Endpoints đã đồng bộ:
-- ✅ `PUT /api/salary-records/:id/status` - hỗ trợ `rejectionReason`
-- ✅ `POST /api/system/reload-formulas-variables` - reload formulas/variables
-- ✅ `createCrud` cho `salaryFormula` - sử dụng `code` làm unique key
-- ✅ `createCrud` cho `evaluationRequest` - xử lý `rejectionReason`
-- ✅ Formula Engine integration trong `/api/salary-records/calculate`
+### 2. KIỂM TRA AUDIT LOG
 
-#### 2.2. Data Mapping:
-- ✅ `SalaryFormula`: `code`, `area`, `targetField`, `expression` → DB
-- ✅ `SalaryVariable`: `code`, `name`, `group`, `description` → DB
-- ✅ `EvaluationRequest`: `rejectionReason` → DB
-- ✅ `SalaryRecord`: `rejectionReason` → DB
+#### ✅ Database (Prisma Schema)
+- **Model**: `AuditLog`
+- **Trạng thái**: ✅ Đã có đầy đủ các trường cần thiết
+- **Chi tiết**:
+  - `action`: String
+  - `actor`: String
+  - `actorId`: String?
+  - `details`: String @db.Text
+  - `entityType`: String?
+  - `entityId`: String?
+  - `timestamp`: DateTime @default(now())
+  - `isConfigAction`: Boolean @default(false)
 
-### 3. **Frontend (TypeScript Types)**
+#### ✅ Backend (Server)
+- **Helper function**: `createAuditLog` (dòng 51-79)
+- **Các thao tác đã có audit log**:
+  - ✅ CREATE/UPDATE/DELETE cho tất cả models qua `createCrud`
+  - ✅ CREATE_USER / UPDATE_USER / DELETE_USER
+  - ✅ CREATE_ATTENDANCE / UPDATE_ATTENDANCE
+  - ✅ CREATE_SALARY / UPDATE_SALARY
+  - ✅ APPROVE_SALARY / REJECT_SALARY / SUBMIT_SALARY
+  - ✅ ADD_SALARY_ADJUSTMENT / DELETE_SALARY_ADJUSTMENT
+  - ✅ UPDATE_ADVANCE_PAYMENT
+  - ✅ CREATE_APPROVAL_WORKFLOW / UPDATE_APPROVAL_WORKFLOW
+  - ✅ UPDATE_CONFIG (bao gồm maxHoursForHRReview)
 
-#### 3.1. Interfaces đã đồng bộ:
-- ✅ `SalaryFormula`: `code`, `area`, `targetField`, `formulaExpression`, `isActive`
-- ✅ `SalaryVariable`: `code`, `name`, `group`, `description`
-- ✅ `EvaluationRequest`: `rejectionReason`
-- ✅ `AttendanceRecord`: `rejectionReason`
-- ✅ `SalaryRecord`: `rejectionReason`
-- ✅ `AuditLog`: `actorId`, `entityType`, `entityId`
-- ✅ `SystemConfig`: `maxHoursForHRReview`, `systemRoles`
+### 3. KIỂM TRA PHÂN QUYỀN
 
-#### 3.2. API Services (services/api.ts):
-- ✅ `updateSalaryStatus(id, status, rejectionReason?)` - gửi `rejectionReason` khi reject
-- ✅ `reloadFormulasAndVariables()` - reload formulas/variables
+#### ✅ Backend
+- **File**: `server.ts`
+- **Endpoint**: `/api/users` (dòng 485-627)
+- **Trạng thái**: ✅ Đã filter theo `currentDeptId` và `sideDeptId` khi kiểm tra `managerId`, `blockDirectorId`, `hrId`
 
-#### 3.3. Context (context/AppContext.tsx):
-- ✅ `updateSalaryStatus(id, status, rejectionReason?)` - signature đúng
-- ✅ `approveEvaluationRequest(id)` - persist vào DB
-- ✅ `rejectEvaluationRequest(id, reason)` - persist vào DB với `rejectionReason`
+#### ✅ Frontend
+- **File**: `pages/Timekeeping.tsx`
+- **Trạng thái**: ✅ Đã filter `availableDepts` theo `currentDeptId` và `sideDeptId`
+- **File**: `pages/Dashboard.tsx`
+- **Trạng thái**: ✅ Đã filter `initialDepts` theo `currentDeptId` và `assignedDeptIds`
 
----
+## KẾT LUẬN
 
-## 🔍 KẾT LUẬN
+### ✅ ĐỒNG BỘ 100%
+Tất cả các thay đổi đã được đồng bộ giữa:
+- ✅ Database Schema (Prisma)
+- ✅ Database Migrations
+- ✅ Backend API (GET & POST)
+- ✅ Frontend Types
+- ✅ Frontend Context
+- ✅ Frontend Components
 
-### ✅ **ĐỒNG BỘ 100%**
+### 📋 LỆNH MIGRATE
 
-Tất cả các thay đổi đã được đồng bộ:
-1. ✅ Database schema đã có tất cả fields cần thiết
-2. ✅ Migrations đã được tạo cho tất cả thay đổi
-3. ✅ Backend API đã hỗ trợ tất cả fields
-4. ✅ Frontend types đã khớp với backend
-5. ✅ Context và services đã đồng bộ
+**Nếu database chưa có field `maxHoursForHRReview`:**
 
-### 📝 **KHÔNG CẦN MIGRATION MỚI**
-
-Các thay đổi gần đây chỉ là:
-- Mobile optimization (CSS/styling)
-- UI components (ConfirmationModal)
-- Frontend logic (Admin check)
-
-**→ Không có thay đổi về database schema**
-
----
-
-## 🚀 **LỆNH KIỂM TRA & ĐỒNG BỘ**
-
-### 1. Kiểm tra trạng thái migrations:
 ```bash
+# Kiểm tra trạng thái migration
 npx prisma migrate status
+
+# Nếu có migration chưa chạy, chạy migrate
+npx prisma migrate deploy
+
+# Hoặc nếu đang development
+npx prisma migrate dev
 ```
 
-### 2. Nếu cần đồng bộ schema (khuyến nghị):
-```bash
-npx prisma db push
+**Lưu ý**: Migration `20260102095309_add_max_hours_for_hr_review` đã được tạo sẵn. Nếu database đã có field này, không cần chạy migrate nữa.
+
+### 🔍 KIỂM TRA THỦ CÔNG
+
+Để kiểm tra xem database đã có field `maxHoursForHRReview` chưa:
+
+```sql
+-- Kiểm tra cấu trúc bảng system_configs
+DESCRIBE system_configs;
+
+-- Hoặc
+SHOW COLUMNS FROM system_configs LIKE 'maxHoursForHRReview';
 ```
 
-Hoặc nếu muốn tạo migration mới (nếu có thay đổi):
-```bash
-npx prisma migrate dev --name sync_schema
-```
-
-### 3. Generate Prisma Client (nếu cần):
-```bash
-npx prisma generate
-```
-
----
-
-## ⚠️ **LƯU Ý**
-
-1. **Nếu `prisma migrate status` báo lỗi:**
-   - Kiểm tra file `.env` có `DATABASE_URL` đúng không
-   - Kiểm tra kết nối database
-   - Chạy `npx prisma db push` để đồng bộ trực tiếp
-
-2. **Nếu có thay đổi schema mới:**
-   - Tạo migration: `npx prisma migrate dev --name <tên_migration>`
-   - Apply migration: `npx prisma migrate deploy` (production)
-
-3. **Sau khi thay đổi schema:**
-   - Luôn chạy `npx prisma generate` để update Prisma Client
-   - Restart server để load Prisma Client mới
-
----
-
-## 📊 **TÓM TẮT**
-
-| Component | Trạng thái | Ghi chú |
-|-----------|-----------|---------|
-| Database Schema | ✅ Đồng bộ | Tất cả fields đã có migrations |
-| Backend API | ✅ Đồng bộ | Tất cả endpoints hỗ trợ đầy đủ |
-| Frontend Types | ✅ Đồng bộ | Interfaces khớp với backend |
-| API Services | ✅ Đồng bộ | Methods đã implement đúng |
-| Context | ✅ Đồng bộ | State management đúng |
-| Migrations | ✅ Hoàn tất | Tất cả migrations đã có |
-
-**KẾT LUẬN: Hệ thống đã đồng bộ 100%, không cần migration mới.**
-
+Nếu field đã tồn tại, không cần chạy migrate. Nếu chưa có, chạy lệnh migrate ở trên.
