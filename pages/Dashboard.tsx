@@ -195,7 +195,7 @@ const Dashboard: React.FC = () => {
               </div>
               {viewMode === 'ADMIN' && (
                 <div className="relative" ref={deptDropdownRef}>
-                    <button onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)} className="px-6 py-2.5 bg-white border-2 border-slate-100 rounded-2xl text-[11px] font-black uppercase flex items-center gap-2 hover:border-indigo-500 transition-all min-w-[260px] justify-between shadow-sm">
+                    <button onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)} className="px-6 py-3 bg-white border-2 border-slate-100 rounded-2xl text-xs sm:text-[11px] font-black uppercase flex items-center gap-2 hover:border-indigo-500 active:scale-95 transition-all min-w-[260px] justify-between shadow-sm touch-manipulation">
                         <div className="flex items-center gap-2 text-indigo-600"><Building size={16}/><span className="text-slate-800">{selectedDeptIds.length === 0 ? 'Chọn Đơn vị' : (selectedDeptIds.length === departments.length ? 'Tất cả Đơn vị' : `${selectedDeptIds.length} Đơn vị đã chọn`)}</span></div>
                         <ChevronDown size={14} className={`transition-transform duration-300 ${isDeptDropdownOpen ? 'rotate-180' : ''}`}/>
                     </button>
@@ -221,8 +221,8 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center gap-3">
               {isManagerUp && (
                   <div className="flex p-1.5 bg-slate-100 rounded-2xl shadow-inner border border-slate-200">
-                      <button onClick={() => setViewMode('PERSONAL')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${viewMode === 'PERSONAL' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-800'}`}><UserIcon size={14}/> Cá nhân</button>
-                      <button onClick={() => setViewMode('ADMIN')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${viewMode === 'ADMIN' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-800'}`}><ShieldAlert size={14}/> Quản trị</button>
+                      <button onClick={() => setViewMode('PERSONAL')} className={`px-6 py-3 rounded-xl text-xs sm:text-[10px] font-black uppercase transition-all flex items-center gap-2 active:scale-95 touch-manipulation ${viewMode === 'PERSONAL' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 active:bg-slate-100 hover:text-slate-800'}`}><UserIcon size={16}/> Cá nhân</button>
+                      <button onClick={() => setViewMode('ADMIN')} className={`px-6 py-3 rounded-xl text-xs sm:text-[10px] font-black uppercase transition-all flex items-center gap-2 active:scale-95 touch-manipulation ${viewMode === 'ADMIN' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 active:bg-slate-100 hover:text-slate-800'}`}><ShieldAlert size={16}/> Quản trị</button>
                   </div>
               )}
           </div>
@@ -321,7 +321,7 @@ const Dashboard: React.FC = () => {
                                   <div className="text-right shrink-0">
                                       <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{formatDateTime(e.createdAt)}</div>
                                       <div className="mt-3 flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
-                                          <button onClick={() => navigate(`/timekeeping?tab=EVALUATION&evalId=${e.id}`)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase shadow-lg active:scale-95 text-left">Xử lý</button>
+                                          <button onClick={() => navigate(`/timekeeping?tab=EVALUATION&evalId=${e.id}`)} className="px-5 py-3 bg-slate-900 text-white rounded-xl text-xs sm:text-[9px] font-black uppercase shadow-lg active:scale-95 touch-manipulation text-left">Xử lý</button>
                                       </div>
                                   </div>
                               </div>
@@ -358,7 +358,7 @@ const Dashboard: React.FC = () => {
                        </div>
                    </div>
                    <div className="shrink-0 w-full xl:w-auto relative z-10 space-y-4 text-left">
-                        <button onClick={() => navigate('/employees')} className="w-full xl:w-64 py-5 bg-slate-900 text-white rounded-[32px] font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-black transition-all flex items-center justify-center gap-3 active:scale-95 border border-white/10 text-left text-left">Hồ sơ năng lực <ArrowRight size={18}/></button>
+                        <button onClick={() => navigate('/employees')} className="w-full xl:w-64 py-5 bg-slate-900 text-white rounded-[32px] font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-black transition-all flex items-center justify-center gap-3 active:scale-95 touch-manipulation border border-white/10 text-left text-left">Hồ sơ năng lực <ArrowRight size={18}/></button>
                    </div>
               </div>
 

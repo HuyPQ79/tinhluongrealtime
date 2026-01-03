@@ -555,7 +555,7 @@ const SalarySheet: React.FC = () => {
                   <input 
                     type="text" 
                     placeholder="Tìm theo tên nhân viên..." 
-                    className="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-100 rounded-2xl text-xs font-bold outline-none focus:border-indigo-500"
+                    className="w-full pl-12 pr-4 py-4 text-base sm:text-xs bg-white border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-indigo-500 touch-manipulation"
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                   />
@@ -568,9 +568,9 @@ const SalarySheet: React.FC = () => {
               </div>
           </div>
 
-          <div className="overflow-x-auto custom-scrollbar">
+          <div className="overflow-x-auto custom-scrollbar -mx-4 sm:mx-0">
               {activeTab === 'SUMMARY' ? (
-                  <table className="w-full text-left text-xs table-fixed min-w-[1600px]">
+                  <table className="w-full text-left text-xs sm:text-xs table-fixed min-w-[1600px]">
                       <thead className="bg-slate-900 text-white font-black uppercase text-[9px] tracking-[0.2em] sticky top-0 z-10">
                           <tr>
                               <th className="px-8 py-6 w-64 sticky left-0 bg-slate-900 z-20 shadow-right">Nhân sự</th>
@@ -691,16 +691,16 @@ const SalarySheet: React.FC = () => {
                                             <Plus size={16}/>
                                           </button>
                                           
-                                          <button onClick={() => setDetailedRecord(r)} className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-black transition-all shadow-lg" title="Xem phiếu lương siêu phân rã"><Eye size={16}/></button>
+                                          <button onClick={() => setDetailedRecord(r)} className="p-3 bg-slate-900 text-white rounded-xl hover:bg-black active:scale-95 transition-all shadow-lg touch-manipulation" title="Xem phiếu lương siêu phân rã"><Eye size={18}/></button>
                                           
                                           {isDraft && isOperator && (
-                                              <button onClick={() => handleAction(r.id, 'SUBMIT')} className="p-2.5 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700 transition-all" title="Gửi duyệt"><Send size={16}/></button>
+                                              <button onClick={() => handleAction(r.id, 'SUBMIT')} className="p-3 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700 active:scale-95 transition-all touch-manipulation" title="Gửi duyệt"><Send size={18}/></button>
                                           )}
                                           
                                           {canActionSalary(r) && !isDraft && r.status !== RecordStatus.APPROVED && (
                                               <>
-                                                <button onClick={() => handleAction(r.id, 'APPROVE')} className="p-1.5 bg-emerald-600 text-white rounded-lg shadow-sm hover:bg-emerald-700 transition-all" title="Phê duyệt"><Check size={14}/></button>
-                                                <button onClick={() => handleAction(r.id, 'REJECT')} className="p-1.5 bg-rose-600 text-white rounded-lg shadow-sm hover:bg-rose-700 transition-all" title="Từ chối"><X size={14}/></button>
+                                                <button onClick={() => handleAction(r.id, 'APPROVE')} className="p-3 bg-emerald-600 text-white rounded-lg shadow-sm hover:bg-emerald-700 active:scale-95 transition-all touch-manipulation" title="Phê duyệt"><Check size={16}/></button>
+                                                <button onClick={() => handleAction(r.id, 'REJECT')} className="p-3 bg-rose-600 text-white rounded-lg shadow-sm hover:bg-rose-700 active:scale-95 transition-all touch-manipulation" title="Từ chối"><X size={16}/></button>
                                               </>
                                           )}
                                       </div>

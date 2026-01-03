@@ -268,8 +268,8 @@ const Sidebar = ({ isOpen, setIsOpen, onOpenProfile }: { isOpen: boolean; setIsO
 
   return (
     <>
-      {isOpen && <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden" onClick={() => setIsOpen(false)}/>}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 sm:w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      {isOpen && <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden" onClick={() => setIsOpen(false)}/>}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 sm:w-80 bg-slate-900 text-white transform transition-transform duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center gap-2 sm:gap-3 h-16 sm:h-20 px-4 sm:px-6 md:px-8 bg-slate-950/50">
           <div className="w-8 h-8 sm:w-10 sm:h-10 bg-indigo-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0">
              <ShieldCheck size={20} className="sm:w-6 sm:h-6 text-white" />
@@ -306,10 +306,10 @@ const Sidebar = ({ isOpen, setIsOpen, onOpenProfile }: { isOpen: boolean; setIsO
                     key={item.path} 
                     to={item.path} 
                     onClick={() => setIsOpen(false)} 
-                    className={`flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4 rounded-lg sm:rounded-[20px] transition-all duration-200 relative group ${isActive ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-900/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                    className={`flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 sm:py-4 rounded-xl sm:rounded-[20px] transition-all duration-200 relative group touch-manipulation ${isActive ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-900/20' : 'text-slate-400 active:bg-white/10 hover:text-white hover:bg-white/5'}`}
                 >
-                    <item.icon size={18} className={`sm:w-[22px] sm:h-[22px] shrink-0 ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-indigo-400'}`} />
-                    <span className="font-bold text-xs sm:text-sm tracking-tight truncate">{item.label}</span>
+                    <item.icon size={20} className={`sm:w-[22px] sm:h-[22px] shrink-0 ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-indigo-400'}`} />
+                    <span className="font-bold text-sm sm:text-sm tracking-tight truncate">{item.label}</span>
                     {isActive && <div className="absolute right-3 sm:right-4 w-1.5 h-1.5 bg-white rounded-full"></div>}
                 </Link>
              );
@@ -359,9 +359,9 @@ const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
   };
 
   return (
-    <header className="h-16 sm:h-20 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-10 sticky top-0 z-40 shadow-sm no-print">
+    <header className="h-16 sm:h-20 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-10 sticky top-0 z-40 shadow-sm no-print safe-area-top">
       <div className="flex items-center gap-3 sm:gap-6 flex-1 min-w-0">
-        <button onClick={toggleSidebar} className="p-2 sm:p-3 text-slate-600 hover:bg-slate-100 rounded-xl sm:rounded-2xl lg:hidden transition-all active:scale-90 shrink-0"><Menu size={20} className="sm:w-6 sm:h-6" /></button>
+        <button onClick={toggleSidebar} className="p-3 sm:p-3 text-slate-600 hover:bg-slate-100 active:bg-slate-200 rounded-xl sm:rounded-2xl lg:hidden transition-all active:scale-95 shrink-0 touch-manipulation"><Menu size={24} className="sm:w-6 sm:h-6" /></button>
         <div className="flex flex-col min-w-0 flex-1">
             <h2 className="text-base sm:text-lg md:text-xl font-black text-slate-900 tracking-tight leading-none truncate">Hệ Thống Lương Thực Lĩnh</h2>
             <div className="hidden sm:flex items-center gap-2 mt-1.5">
@@ -376,9 +376,9 @@ const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
          <div className="relative" ref={notiRef}>
              <button 
                 onClick={() => setIsNotiOpen(!isNotiOpen)}
-                className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl transition-all relative ${isNotiOpen ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+                className={`p-3 sm:p-3 rounded-xl sm:rounded-2xl transition-all relative active:scale-95 touch-manipulation ${isNotiOpen ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 active:bg-slate-200 hover:bg-slate-100'}`}
              >
-                 <Bell size={18} className="sm:w-[22px] sm:h-[22px]"/>
+                 <Bell size={20} className="sm:w-[22px] sm:h-[22px]"/>
                  {unreadCount > 0 && (
                      <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-rose-500 text-white text-[9px] sm:text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white animate-bounce">
                         {unreadCount > 9 ? '9+' : unreadCount}
@@ -387,7 +387,7 @@ const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
              </button>
 
              {isNotiOpen && (
-                 <div className="absolute top-full right-0 mt-4 w-96 bg-white rounded-[32px] shadow-2xl border border-slate-100 overflow-hidden animate-fade-in-up">
+                 <div className="absolute top-full right-0 mt-2 sm:mt-4 w-[calc(100vw-2rem)] sm:w-96 max-w-sm bg-white rounded-2xl sm:rounded-[32px] shadow-2xl border border-slate-100 overflow-hidden animate-fade-in-up">
                     <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
                         <span className="text-xs font-black text-slate-800 uppercase tracking-widest">Thông báo hệ thống</span>
                         <button className="text-[10px] font-bold text-indigo-600 hover:underline">Đánh dấu đã đọc</button>
@@ -455,7 +455,7 @@ const MainLayout: React.FC = () => {
             <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} onOpenProfile={() => setProfileOpen(true)} />
             <div className="flex-1 flex flex-col min-w-0">
                 <Header toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-                <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-10 scroll-smooth relative bg-slate-50/50">
+                <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-10 scroll-smooth relative bg-slate-50/50 safe-area-inset">
                     <div className="max-w-[1600px] mx-auto">
                         <Outlet />
                     </div>

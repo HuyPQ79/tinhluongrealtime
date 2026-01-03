@@ -2,7 +2,11 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="theme-color" content="#6366f1" />
     <title>Hệ thống Lương & Hiệu Suất Real-time</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
@@ -24,9 +28,105 @@
       }
     </script>
     <style>
-      /* (Giữ nguyên phần style in ấn của bạn) */
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-      body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+      body { 
+        font-family: 'Inter', sans-serif; 
+        background-color: #f8fafc;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        /* Tối ưu cho mobile */
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+      }
+      
+      /* Tối ưu touch targets cho mobile - tối thiểu 44x44px */
+      button, a, input[type="button"], input[type="submit"], select {
+        min-height: 44px;
+        min-width: 44px;
+      }
+      
+      /* Tối ưu scroll cho mobile */
+      * {
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      /* Tối ưu tables cho mobile */
+      @media (max-width: 768px) {
+        table {
+          display: block;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          white-space: nowrap;
+        }
+        
+        /* Ẩn một số cột không quan trọng trên mobile */
+        .hide-mobile {
+          display: none !important;
+        }
+        
+        /* Tối ưu modals cho mobile */
+        .modal-content {
+          max-height: 90vh;
+          overflow-y: auto;
+          margin: 1rem;
+        }
+      }
+      
+      /* Custom scrollbar cho mobile */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+      }
+      
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 2px;
+      }
+      
+      /* Tối ưu text selection */
+      ::selection {
+        background: #6366f1;
+        color: white;
+      }
+      
+      /* Prevent zoom on input focus (iOS) */
+      @media screen and (max-width: 768px) {
+        input[type="text"],
+        input[type="number"],
+        input[type="email"],
+        input[type="password"],
+        select,
+        textarea {
+          font-size: 16px !important;
+        }
+      }
+      
+      /* Safe area support cho notch */
+      .safe-area-top {
+        padding-top: env(safe-area-inset-top);
+      }
+      
+      .safe-area-bottom {
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      
+      .safe-area-inset {
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
+      
+      /* Tối ưu animations cho mobile */
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
     </style>
   </head>
   <body>

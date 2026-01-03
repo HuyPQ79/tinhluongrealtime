@@ -688,9 +688,9 @@ const Timekeeping: React.FC = () => {
                   <input type="date" className="px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}/>
               </div>
               <div className="flex gap-2 p-1 bg-slate-800 rounded-xl self-end">
-                <button onClick={() => { setActiveMode('ATTENDANCE'); setSearchParams({tab:'ATTENDANCE'}); }} className={`px-5 py-2 rounded-lg font-bold text-[10px] uppercase transition-all ${activeMode === 'ATTENDANCE' ? 'bg-white text-indigo-600 shadow' : 'text-slate-400'}`}>Bảng Công</button>
-                <button onClick={() => { setActiveMode('SUMMARY'); setSearchParams({tab:'SUMMARY'}); }} className={`px-5 py-2 rounded-lg font-bold text-[10px] uppercase transition-all ${activeMode === 'SUMMARY' ? 'bg-white text-emerald-600 shadow' : 'text-slate-400'}`}>Tổng Hợp</button>
-                <button onClick={() => { setActiveMode('EVALUATION'); setSearchParams({tab:'EVALUATION'}); }} className={`px-5 py-2 rounded-lg font-bold text-[10px] uppercase transition-all ${activeMode === 'EVALUATION' ? 'bg-white text-orange-600 shadow' : 'text-slate-400'}`}>KPI & Phạt</button>
+                <button onClick={() => { setActiveMode('ATTENDANCE'); setSearchParams({tab:'ATTENDANCE'}); }} className={`px-6 py-3 rounded-xl font-bold text-xs sm:text-[10px] uppercase transition-all active:scale-95 touch-manipulation ${activeMode === 'ATTENDANCE' ? 'bg-white text-indigo-600 shadow' : 'text-slate-400 active:bg-slate-100'}`}>Bảng Công</button>
+                <button onClick={() => { setActiveMode('SUMMARY'); setSearchParams({tab:'SUMMARY'}); }} className={`px-6 py-3 rounded-xl font-bold text-xs sm:text-[10px] uppercase transition-all active:scale-95 touch-manipulation ${activeMode === 'SUMMARY' ? 'bg-white text-emerald-600 shadow' : 'text-slate-400 active:bg-slate-100'}`}>Tổng Hợp</button>
+                <button onClick={() => { setActiveMode('EVALUATION'); setSearchParams({tab:'EVALUATION'}); }} className={`px-6 py-3 rounded-xl font-bold text-xs sm:text-[10px] uppercase transition-all active:scale-95 touch-manipulation ${activeMode === 'EVALUATION' ? 'bg-white text-orange-600 shadow' : 'text-slate-400 active:bg-slate-100'}`}>KPI & Phạt</button>
               </div>
           </div>
       </div>
@@ -824,8 +824,8 @@ const Timekeeping: React.FC = () => {
                                           <div className="flex justify-end gap-1.5">
                                               {hasPermission && buffer.status !== RecordStatus.APPROVED && buffer.status !== RecordStatus.DRAFT && (
                                                   <>
-                                                    <button onClick={() => handleIndividualAction(u.id, 'APPROVE')} className="p-1.5 bg-emerald-600 text-white rounded-lg shadow-sm hover:bg-emerald-700 transition-all" title="Duyệt bản ghi"><Check size={14}/></button>
-                                                    <button onClick={() => handleIndividualAction(u.id, 'REJECT')} className="p-1.5 bg-rose-600 text-white rounded-lg shadow-sm hover:bg-rose-700 transition-all" title="Từ chối/Trả về"><RotateCcw size={14}/></button>
+                                                    <button onClick={() => handleIndividualAction(u.id, 'APPROVE')} className="p-3 bg-emerald-600 text-white rounded-lg shadow-sm hover:bg-emerald-700 active:scale-95 transition-all touch-manipulation" title="Duyệt bản ghi"><Check size={16}/></button>
+                                                    <button onClick={() => handleIndividualAction(u.id, 'REJECT')} className="p-3 bg-rose-600 text-white rounded-lg shadow-sm hover:bg-rose-700 active:scale-95 transition-all touch-manipulation" title="Từ chối/Trả về"><RotateCcw size={16}/></button>
                                                   </>
                                               )}
                                           </div>
@@ -1151,11 +1151,11 @@ const Timekeeping: React.FC = () => {
 
                                                     {canApprove && req.status !== RecordStatus.APPROVED && req.status !== RecordStatus.REJECTED && (
                                                         <div className="flex gap-2 text-left text-left text-left">
-                                                            <button onClick={() => approveEvaluationRequest(req.id)} className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-emerald-100 hover:bg-emerald-700 active:scale-95 transition-all text-left text-left text-left">
-                                                                <CheckCircle size={14}/> Phê duyệt
+                                                            <button onClick={() => approveEvaluationRequest(req.id)} className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs sm:text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-emerald-100 hover:bg-emerald-700 active:scale-95 transition-all touch-manipulation">
+                                                                <CheckCircle size={16}/> Phê duyệt
                                                             </button>
-                                                            <button onClick={() => setRejectionModal({ isOpen: true, id: req.id })} className="px-5 py-2.5 bg-white text-rose-600 border-2 border-rose-100 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-rose-50 active:scale-95 transition-all text-left text-left text-left">
-                                                                <XCircle size={14}/> Từ chối
+                                                            <button onClick={() => setRejectionModal({ isOpen: true, id: req.id })} className="px-6 py-3 bg-white text-rose-600 border-2 border-rose-100 rounded-xl text-xs sm:text-[10px] font-black uppercase flex items-center gap-2 hover:bg-rose-50 active:scale-95 transition-all touch-manipulation">
+                                                                <XCircle size={16}/> Từ chối
                                                             </button>
                                                         </div>
                                                     )}
