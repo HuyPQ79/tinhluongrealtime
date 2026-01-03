@@ -57,6 +57,43 @@ const Timekeeping: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeMode, setActiveMode] = useState<'ATTENDANCE' | 'EVALUATION' | 'SUMMARY'>('ATTENDANCE');
 
+  // Calculate available departments first (before useEffect that uses it)
+  const availableDepts = useMemo(() => {
+    if (!currentUser) return [];
+    let baseDepts = departments;
+    if (!hasRole(currentUser, [UserRole.ADMIN, UserRole.BAN_LANH_DAO])) {
+        if (currentUser.roles.includes(UserRole.KE_TOAN_LUONG)) {
+            baseDepts = departments.filter(d => currentUser.assignedDeptIds?.includes(d.id));
+        } else {
+            // Ưu tiên lấy phòng ban hiện tại của user trước
+            const currentDept = currentUser.currentDeptId ? departments.find(d => d.id === currentUser.currentDeptId) : null;
+            const sideDept = currentUser.sideDeptId ? departments.find(d => d.id === currentUser.sideDeptId) : null;
+            
+            // Kiểm tra xem user có phải là manager/hr/gdk của phòng ban hiện tại không
+            const isManagerOfCurrentDept = currentDept && currentDept.managerId === currentUser.id;
+            const isHROfCurrentDept = currentDept && currentDept.hrId === currentUser.id;
+            const isGDKOfCurrentDept = currentDept && currentDept.blockDirectorId === currentUser.id;
+            const isManagerOfSideDept = sideDept && sideDept.managerId === currentUser.id;
+            const isHROfSideDept = sideDept && sideDept.hrId === currentUser.id;
+            const isGDKOfSideDept = sideDept && sideDept.blockDirectorId === currentUser.id;
+            
+            // Nếu user là manager/hr/gdk của phòng ban hiện tại, chỉ lấy phòng ban đó
+            if (isManagerOfCurrentDept || isHROfCurrentDept || isGDKOfCurrentDept) {
+                baseDepts = currentDept ? [currentDept] : [];
+                if (sideDept && (isManagerOfSideDept || isHROfSideDept || isGDKOfSideDept)) {
+                    baseDepts.push(sideDept);
+                }
+            } else if (isManagerOfSideDept || isHROfSideDept || isGDKOfSideDept) {
+                baseDepts = sideDept ? [sideDept] : [];
+            } else {
+                // Fallback: lấy phòng ban hiện tại của user (không cần là manager)
+                baseDepts = departments.filter(d => d.id === currentUser.currentDeptId || d.id === currentUser.sideDeptId);
+            }
+        }
+    }
+    return baseDepts;
+  }, [departments, currentUser]);
+
   // Handle Deep Links from Notifications
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -73,15 +110,15 @@ const Timekeeping: React.FC = () => {
       setActiveMode('ATTENDANCE');
     }
 
-    // Set date if provided (always set if param exists, let React handle deduplication)
+    // Set date if provided
     if (dateParam) {
       setSelectedDate(dateParam);
     }
 
     // Set department if provided and valid
     if (deptParam) {
-      // Validate deptId exists in availableDepts
-      const isValidDept = availableDepts.some(d => d.id === deptParam) || deptParam === 'ALL';
+      // Validate deptId exists in departments
+      const isValidDept = departments.length > 0 && (departments.some(d => d.id === deptParam) || deptParam === 'ALL');
       if (isValidDept) {
         setSelectedDeptId(deptParam);
       }
@@ -90,7 +127,7 @@ const Timekeeping: React.FC = () => {
     // Scroll đến evaluation request cụ thể nếu có evalId
     if (evalIdParam && tab === 'EVALUATION') {
       // Wait for evaluations to load and render
-      setTimeout(() => {
+      const scrollToEval = () => {
         const element = document.getElementById(`eval-${evalIdParam}`);
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -98,22 +135,20 @@ const Timekeeping: React.FC = () => {
           setTimeout(() => {
             element.classList.remove('ring-4', 'ring-indigo-500', 'ring-offset-2');
           }, 3000);
-        } else {
-          // Retry after a longer delay if element not found (evaluations might still be loading)
-          setTimeout(() => {
-            const retryElement = document.getElementById(`eval-${evalIdParam}`);
-            if (retryElement) {
-              retryElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              retryElement.classList.add('ring-4', 'ring-indigo-500', 'ring-offset-2');
-              setTimeout(() => {
-                retryElement.classList.remove('ring-4', 'ring-indigo-500', 'ring-offset-2');
-              }, 3000);
-            }
-          }, 1500);
+          return true;
+        }
+        return false;
+      };
+      
+      // Try immediately, then retry if needed
+      setTimeout(() => {
+        if (!scrollToEval()) {
+          setTimeout(() => scrollToEval(), 1500);
         }
       }, 500);
     }
-  }, [searchParams, availableDepts]); // Depend on searchParams and availableDepts
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]); // Only depend on searchParams - departments is stable from context
 
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isCriteriaDropdownOpen, setIsCriteriaDropdownOpen] = useState(false);
@@ -221,43 +256,7 @@ const Timekeeping: React.FC = () => {
     );
   };
 
-  const availableDepts = useMemo(() => {
-    if (!currentUser) return [];
-    let baseDepts = departments;
-    if (!hasRole(currentUser, [UserRole.ADMIN, UserRole.BAN_LANH_DAO])) {
-        if (currentUser.roles.includes(UserRole.KE_TOAN_LUONG)) {
-            baseDepts = departments.filter(d => currentUser.assignedDeptIds?.includes(d.id));
-        } else {
-            // Ưu tiên lấy phòng ban hiện tại của user trước
-            const currentDept = currentUser.currentDeptId ? departments.find(d => d.id === currentUser.currentDeptId) : null;
-            const sideDept = currentUser.sideDeptId ? departments.find(d => d.id === currentUser.sideDeptId) : null;
-            
-            // Kiểm tra xem user có phải là manager/hr/gdk của phòng ban hiện tại không
-            const isManagerOfCurrentDept = currentDept && currentDept.managerId === currentUser.id;
-            const isHROfCurrentDept = currentDept && currentDept.hrId === currentUser.id;
-            const isGDKOfCurrentDept = currentDept && currentDept.blockDirectorId === currentUser.id;
-            const isManagerOfSideDept = sideDept && sideDept.managerId === currentUser.id;
-            const isHROfSideDept = sideDept && sideDept.hrId === currentUser.id;
-            const isGDKOfSideDept = sideDept && sideDept.blockDirectorId === currentUser.id;
-            
-            // Nếu user là manager/hr/gdk của phòng ban hiện tại, chỉ lấy phòng ban đó
-            if (isManagerOfCurrentDept || isHROfCurrentDept || isGDKOfCurrentDept) {
-                baseDepts = currentDept ? [currentDept] : [];
-                if (sideDept && (isManagerOfSideDept || isHROfSideDept || isGDKOfSideDept)) {
-                    baseDepts.push(sideDept);
-                }
-            } else if (isManagerOfSideDept || isHROfSideDept || isGDKOfSideDept) {
-                baseDepts = sideDept ? [sideDept] : [];
-            } else {
-                // Fallback: lấy phòng ban hiện tại của user (không cần là manager)
-                baseDepts = departments.filter(d => d.id === currentUser.currentDeptId || d.id === currentUser.sideDeptId);
-            }
-        }
-    }
-    return baseDepts;
-  }, [departments, currentUser]);
-
-  const [selectedDeptId, setSelectedDeptId] = useState(availableDepts[0]?.id || 'ALL');
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('ALL');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceBuffer, setAttendanceBuffer] = useState<Record<string, Partial<AttendanceRecord>>>({});
   
@@ -297,6 +296,13 @@ const Timekeeping: React.FC = () => {
         return inSelectedDept && canViewUser(u);
     });
   }, [allUsers, selectedDeptId, canViewUser, isOnlyEmployee, currentUser]);
+
+  // Initialize selectedDeptId when availableDepts is ready
+  useEffect(() => {
+    if (availableDepts.length > 0 && (selectedDeptId === 'ALL' || !availableDepts.some(d => d.id === selectedDeptId))) {
+      setSelectedDeptId(availableDepts[0].id);
+    }
+  }, [availableDepts.length]); // Only depend on length to avoid infinite loops
 
   const filteredUsersForSelect = useMemo(() => {
     return currentDeptUsers.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.id.toLowerCase().includes(userSearch.toLowerCase()));
