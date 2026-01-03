@@ -206,17 +206,40 @@ export const seedDatabase = async () => {
         console.log("   - Users...");
         for (const u of INITIAL_USERS) {
             const exists = await prisma.user.findUnique({ where: { username: u.username } });
+            
+            // Tạo data object chỉ với các field cần thiết, loại bỏ undefined
+            const userData: any = {
+                id: u.id,
+                username: u.username,
+                password: u.password,
+                name: u.name,
+                avatar: u.avatar,
+                joinDate: new Date(u.joinDate).toISOString(),
+                status: u.status,
+                roles: u.roles,
+                numberOfDependents: u.numberOfDependents,
+                paymentType: u.paymentType,
+                efficiencySalary: u.efficiencySalary,
+                reservedBonusAmount: u.reservedBonusAmount,
+                currentDeptId: u.currentDeptId || null,
+                currentRankId: u.currentRankId || null,
+                currentGradeId: u.currentGradeId || null,
+            };
+            
+            // Chỉ thêm pieceworkUnitPrice nếu có
+            if ('pieceworkUnitPrice' in u && u.pieceworkUnitPrice !== undefined) {
+                userData.pieceworkUnitPrice = u.pieceworkUnitPrice;
+            }
+            
             if (!exists) {
                 // Tạo mới nếu chưa có
-                await prisma.user.create({
-                    data: { ...u, joinDate: new Date(u.joinDate).toISOString() } // Chuyển đổi ngày tháng
-                });
+                await prisma.user.create({ data: userData });
             } else {
                 // Cập nhật nếu đã có (để update thông tin mới nhất từ mock)
-                const { password, ...updateData } = u; // Không update password để tránh reset pass của user đang dùng
+                const { password, ...updateData } = userData; // Không update password để tránh reset pass của user đang dùng
                 await prisma.user.update({
                     where: { username: u.username },
-                    data: { ...updateData, joinDate: new Date(u.joinDate).toISOString() }
+                    data: updateData
                 });
             }
         }
@@ -226,10 +249,25 @@ export const seedDatabase = async () => {
     try {
         console.log("   - Evaluations...");
         for (const ev of INITIAL_EVALUATIONS) {
+            // Tạo data object chỉ với các field cần thiết, không bao gồm userId (dùng relation)
+            const evData: any = {
+                id: ev.id,
+                criteriaId: ev.criteriaId,
+                criteriaName: ev.criteriaName,
+                type: ev.type,
+                target: ev.target,
+                points: ev.points,
+                description: ev.description,
+                requesterId: ev.requesterId,
+                status: ev.status,
+                createdAt: new Date(ev.createdAt).toISOString(),
+                user: { connect: { id: ev.userId } }
+            };
+            
             await prisma.evaluationRequest.upsert({
                 where: { id: ev.id },
-                update: { ...ev, createdAt: new Date(ev.createdAt).toISOString() },
-                create: { ...ev, createdAt: new Date(ev.createdAt).toISOString() }
+                update: evData,
+                create: evData
             });
         }
     } catch(e) { console.error("   x Lỗi Evaluations:", e); }
