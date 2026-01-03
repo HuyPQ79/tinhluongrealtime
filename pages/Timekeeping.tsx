@@ -115,10 +115,44 @@ const Timekeeping: React.FC = () => {
     return `${h}h ${m}p`;
   };
 
+  // Kiểm tra xem bản ghi APPROVED có thể hậu kiểm không (trong vòng maxHoursForHRReview giờ)
+  const canReviewApprovedRecord = (record: AttendanceRecord): boolean => {
+    if (record.status !== RecordStatus.APPROVED) return false;
+    if (!systemConfig.maxHoursForHRReview) return false;
+    
+    // Lấy thời gian updated (khi approved)
+    const updatedAt = record.updatedAt ? new Date(record.updatedAt).getTime() : null;
+    if (!updatedAt) return false;
+    
+    const maxHours = systemConfig.maxHoursForHRReview;
+    const deadline = updatedAt + (maxHours * 60 * 60 * 1000);
+    const now = Date.now();
+    
+    return now <= deadline;
+  };
+
+  // Tính countdown cho hậu kiểm bản ghi APPROVED
+  const getPostAuditCountdown = (record: AttendanceRecord): string | null => {
+    if (record.status !== RecordStatus.APPROVED || !systemConfig.maxHoursForHRReview) return null;
+    
+    const updatedAt = record.updatedAt ? new Date(record.updatedAt).getTime() : null;
+    if (!updatedAt) return null;
+    
+    const maxHours = systemConfig.maxHoursForHRReview;
+    const deadline = updatedAt + (maxHours * 60 * 60 * 1000);
+    const diff = deadline - now;
+    
+    if (diff <= 0) return 'Hết thời gian hậu kiểm';
+    const h = Math.floor(diff / (1000 * 60 * 60));
+    const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return `${h}h ${m}p`;
+  };
+
   const getStatusBadge = (record: AttendanceRecord) => {
     if (!record?.status) return null;
     const color = getStatusColor(record.status);
-    const countdown = getHRCountdown(record);
+    const countdown = record.status === RecordStatus.PENDING_HR ? getHRCountdown(record) : 
+                      record.status === RecordStatus.APPROVED ? getPostAuditCountdown(record) : null;
     
     let label = record.status.replace('PENDING_', 'CHỜ ');
     if (record.status === RecordStatus.PENDING_HR) label = 'HẬU KIỂM';
@@ -827,6 +861,16 @@ const Timekeeping: React.FC = () => {
                                                     <button onClick={() => handleIndividualAction(u.id, 'APPROVE')} className="p-3 bg-emerald-600 text-white rounded-lg shadow-sm hover:bg-emerald-700 active:scale-95 transition-all touch-manipulation" title="Duyệt bản ghi"><Check size={16}/></button>
                                                     <button onClick={() => handleIndividualAction(u.id, 'REJECT')} className="p-3 bg-rose-600 text-white rounded-lg shadow-sm hover:bg-rose-700 active:scale-95 transition-all touch-manipulation" title="Từ chối/Trả về"><RotateCcw size={16}/></button>
                                                   </>
+                                              )}
+                                              {/* Nút hậu kiểm cho bản ghi APPROVED */}
+                                              {hasPermission && buffer.status === RecordStatus.APPROVED && canReviewApprovedRecord(buffer as AttendanceRecord) && (
+                                                  <button 
+                                                      onClick={() => handleIndividualAction(u.id, 'REJECT')} 
+                                                      className="p-3 bg-purple-600 text-white rounded-lg shadow-sm hover:bg-purple-700 active:scale-95 transition-all touch-manipulation" 
+                                                      title="Hậu kiểm: Trả về để điều chỉnh"
+                                                  >
+                                                      <ShieldCheck size={16}/>
+                                                  </button>
                                               )}
                                           </div>
                                       </td>

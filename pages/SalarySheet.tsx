@@ -5,7 +5,7 @@ import {
     Search, Calculator, Plus, Trash2, Info, X, Eye, Printer, ThumbsUp, ThumbsDown,
     Calendar, Target, CreditCard, Briefcase, ChevronDown, Package, History, Landmark,
     DollarSign, Banknote, FileSpreadsheet, Check, Loader2, ShieldAlert, Zap, TrendingUp, AlertCircle, FileText,
-    Layers, ShieldCheck, Send
+    Layers, ShieldCheck, Send, Clock
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { RecordStatus, UserRole, SalaryRecord, PieceworkConfig, AttendanceType, EvaluationTarget, User } from '../types';
@@ -369,17 +369,60 @@ const SalarySheet: React.FC = () => {
     showToast("Đã xuất file báo cáo Excel", "SUCCESS");
   };
 
+  // Kiểm tra xem bản ghi APPROVED có thể hậu kiểm không (trong vòng maxHoursForHRReview giờ)
+  const canReviewApprovedSalaryRecord = (record: SalaryRecord): boolean => {
+    if (record.status !== RecordStatus.APPROVED) return false;
+    if (!systemConfig.maxHoursForHRReview) return false;
+    
+    // Lấy thời gian lastUpdated (khi approved)
+    const lastUpdated = record.lastUpdated ? new Date(record.lastUpdated).getTime() : null;
+    if (!lastUpdated) return false;
+    
+    const maxHours = systemConfig.maxHoursForHRReview;
+    const deadline = lastUpdated + (maxHours * 60 * 60 * 1000);
+    const now = Date.now();
+    
+    return now <= deadline;
+  };
+
+  // Tính countdown cho hậu kiểm bản ghi APPROVED
+  const getPostAuditCountdown = (record: SalaryRecord): string | null => {
+    if (record.status !== RecordStatus.APPROVED || !systemConfig.maxHoursForHRReview) return null;
+    
+    const lastUpdated = record.lastUpdated ? new Date(record.lastUpdated).getTime() : null;
+    if (!lastUpdated) return null;
+    
+    const maxHours = systemConfig.maxHoursForHRReview;
+    const deadline = lastUpdated + (maxHours * 60 * 60 * 1000);
+    const diff = deadline - Date.now();
+    
+    if (diff <= 0) return 'Hết thời gian hậu kiểm';
+    const h = Math.floor(diff / (1000 * 60 * 60));
+    const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return `${h}h ${m}p`;
+  };
+
   const getStatusBadge = (record: SalaryRecord) => {
     const status = record.status;
+    const countdown = status === RecordStatus.APPROVED ? getPostAuditCountdown(record) : null;
+    
+    let badge;
     switch (status) {
-      case RecordStatus.DRAFT: return <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-black border border-slate-200 uppercase tracking-tighter shadow-sm">Bản Nháp</span>;
-      case RecordStatus.APPROVED: return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[9px] font-black border border-emerald-200 uppercase tracking-tighter shadow-sm">Đã Phê Duyệt</span>;
-      case RecordStatus.PENDING_MANAGER: return <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[9px] font-black border border-blue-200 uppercase tracking-tighter shadow-sm">Chờ Quản Lý</span>;
-      case RecordStatus.PENDING_GDK: return <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-black border border-indigo-200 uppercase tracking-tighter shadow-sm">Chờ GĐ Khối</span>;
-      case RecordStatus.PENDING_BLD: return <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-black border border-amber-200 uppercase tracking-tighter shadow-sm">Chờ Ban LĐ</span>;
-      case RecordStatus.PENDING_HR: return <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-black border border-purple-200 uppercase tracking-tighter shadow-sm">Chờ Hậu Kiểm</span>;
-      default: return <span className="px-2 py-0.5 bg-rose-100 text-rose-700 rounded text-[9px] font-black border border-rose-200 uppercase tracking-tighter shadow-sm">Từ Chối</span>;
+      case RecordStatus.DRAFT: badge = <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-black border border-slate-200 uppercase tracking-tighter shadow-sm">Bản Nháp</span>; break;
+      case RecordStatus.APPROVED: badge = <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[9px] font-black border border-emerald-200 uppercase tracking-tighter shadow-sm">Đã Phê Duyệt</span>; break;
+      case RecordStatus.PENDING_MANAGER: badge = <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[9px] font-black border border-blue-200 uppercase tracking-tighter shadow-sm">Chờ Quản Lý</span>; break;
+      case RecordStatus.PENDING_GDK: badge = <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-black border border-indigo-200 uppercase tracking-tighter shadow-sm">Chờ GĐ Khối</span>; break;
+      case RecordStatus.PENDING_BLD: badge = <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-black border border-amber-200 uppercase tracking-tighter shadow-sm">Chờ Ban LĐ</span>; break;
+      case RecordStatus.PENDING_HR: badge = <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-black border border-purple-200 uppercase tracking-tighter shadow-sm">Chờ Hậu Kiểm</span>; break;
+      default: badge = <span className="px-2 py-0.5 bg-rose-100 text-rose-700 rounded text-[9px] font-black border border-rose-200 uppercase tracking-tighter shadow-sm">Từ Chối</span>; break;
     }
+    
+    return (
+      <div className="flex flex-col items-center gap-1">
+        {badge}
+        {countdown && <span className="text-[7px] font-black text-rose-500 animate-pulse flex items-center gap-0.5"><Clock size={8}/> {countdown}</span>}
+      </div>
+    );
   };
 
   const isOperator = hasRole(currentUser!, [UserRole.ADMIN, UserRole.KE_TOAN_LUONG]);
@@ -702,6 +745,16 @@ const SalarySheet: React.FC = () => {
                                                 <button onClick={() => handleAction(r.id, 'APPROVE')} className="p-3 bg-emerald-600 text-white rounded-lg shadow-sm hover:bg-emerald-700 active:scale-95 transition-all touch-manipulation" title="Phê duyệt"><Check size={16}/></button>
                                                 <button onClick={() => handleAction(r.id, 'REJECT')} className="p-3 bg-rose-600 text-white rounded-lg shadow-sm hover:bg-rose-700 active:scale-95 transition-all touch-manipulation" title="Từ chối"><X size={16}/></button>
                                               </>
+                                          )}
+                                          {/* Nút hậu kiểm cho bản ghi APPROVED */}
+                                          {canActionSalary(r) && r.status === RecordStatus.APPROVED && canReviewApprovedSalaryRecord(r) && (
+                                              <button 
+                                                  onClick={() => handleAction(r.id, 'REJECT')} 
+                                                  className="p-3 bg-purple-600 text-white rounded-lg shadow-sm hover:bg-purple-700 active:scale-95 transition-all touch-manipulation" 
+                                                  title="Hậu kiểm: Trả về để điều chỉnh"
+                                              >
+                                                  <ShieldCheck size={16}/>
+                                              </button>
                                           )}
                                       </div>
                                   </td>
