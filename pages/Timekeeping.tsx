@@ -1,10 +1,11 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
     UserCheck, AlertCircle, Save, Plus, CheckCircle, XCircle, Undo2, 
     Trash2, Clock, Building2, Search, Calendar as CalendarIcon, Target, Check, Info, ChevronRight, Briefcase, Layers, ThumbsUp, ThumbsDown, FileText, Paperclip, Upload, X, Calculator, DollarSign, Wallet, Eye, UserPlus, ListPlus, ChevronDown, User as UserIcon,
-    Banknote, BarChart3, FileSpreadsheet, ChevronLeft, CalendarDays, Zap, ShieldAlert, Send, ArrowRight, Loader2, RotateCcw, ShieldCheck, FileCheck, Printer
+    Banknote, BarChart3, FileSpreadsheet, ChevronLeft, CalendarDays, Zap, ShieldAlert, Send, ArrowRight, Loader2, RotateCcw, ShieldCheck, FileCheck, Printer,
+    Timer, Package, Sun, Calendar, Coffee, Ban, Pause, HelpCircle
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { RecordStatus, EvaluationRequest, UserRole, EvaluationScope, AttendanceType, AttendanceRecord, User, Criterion, EvaluationTarget } from '../types';
@@ -20,6 +21,28 @@ const ATTENDANCE_LABELS: Record<string, string> = {
   [AttendanceType.PAID_LEAVE]: 'Nghỉ phép/Có lương',
   [AttendanceType.UNPAID]: 'Nghỉ không lương',
   [AttendanceType.WAITING]: 'Nghỉ chờ việc'
+};
+
+const ATTENDANCE_ICONS: Record<string, any> = {
+  [AttendanceType.TIME]: Timer,
+  [AttendanceType.PIECEWORK]: Package,
+  [AttendanceType.DAILY]: Sun,
+  [AttendanceType.MODE]: Calendar,
+  [AttendanceType.HOLIDAY]: Coffee,
+  [AttendanceType.PAID_LEAVE]: CheckCircle,
+  [AttendanceType.UNPAID]: Ban,
+  [AttendanceType.WAITING]: Pause
+};
+
+const ATTENDANCE_COLORS: Record<string, string> = {
+  [AttendanceType.TIME]: 'text-indigo-600 bg-indigo-50 border-indigo-200',
+  [AttendanceType.PIECEWORK]: 'text-emerald-600 bg-emerald-50 border-emerald-200',
+  [AttendanceType.DAILY]: 'text-blue-600 bg-blue-50 border-blue-200',
+  [AttendanceType.MODE]: 'text-purple-600 bg-purple-50 border-purple-200',
+  [AttendanceType.HOLIDAY]: 'text-amber-600 bg-amber-50 border-amber-200',
+  [AttendanceType.PAID_LEAVE]: 'text-green-600 bg-green-50 border-green-200',
+  [AttendanceType.UNPAID]: 'text-rose-600 bg-rose-50 border-rose-200',
+  [AttendanceType.WAITING]: 'text-slate-600 bg-slate-50 border-slate-200'
 };
 
 const Timekeeping: React.FC = () => {
@@ -67,6 +90,7 @@ const Timekeeping: React.FC = () => {
   const [isCriteriaDropdownOpen, setIsCriteriaDropdownOpen] = useState(false);
   const userDropdownRef = useRef<HTMLDivElement>(null);
   const criteriaDropdownRef = useRef<HTMLDivElement>(null);
+  const handleSaveAllAttendanceRef = useRef<() => Promise<void>>();
 
   const [actionProcessing, setActionProcessing] = useState<string | null>(null);
   const [lastActionStatus, setLastActionStatus] = useState<{ id: string, type: 'SUCCESS' | 'ERROR' } | null>(null);
@@ -227,6 +251,10 @@ const Timekeeping: React.FC = () => {
   const [userSearch, setUserSearch] = useState('');
   const [criteriaSearch, setCriteriaSearch] = useState('');
   const [isQuickCriteriaModalOpen, setIsQuickCriteriaModalOpen] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [bulkEditMode, setBulkEditMode] = useState<boolean>(false);
 
   const isOnlyEmployee = useMemo(() => {
       if (!currentUser) return true;
@@ -289,6 +317,48 @@ const Timekeeping: React.FC = () => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Validation function
+  const validateAttendanceRecord = (userId: string, buffer: Partial<AttendanceRecord>): string | null => {
+    const hours = buffer.hours || 0;
+    const overtimeHours = buffer.overtimeHours || 0;
+    
+    if (!buffer.type) {
+      return 'Vui lòng chọn loại công';
+    }
+    if (!hours || hours <= 0) {
+      return 'Giờ công phải lớn hơn 0';
+    }
+    if (hours > 24) {
+      return 'Giờ công không được vượt quá 24h';
+    }
+    if (overtimeHours > hours && hours > 0) {
+      return 'Giờ tăng ca không được vượt quá giờ chính';
+    }
+    if (buffer.type === AttendanceType.PIECEWORK && (buffer.output === undefined || buffer.output === null || buffer.output < 0)) {
+      return 'Vui lòng nhập sản lượng cho công khoán';
+    }
+    if (buffer.type === AttendanceType.DAILY && !buffer.dailyWorkItemId) {
+      return 'Vui lòng chọn việc nhật';
+    }
+    return null;
+  };
+
+  // Update validation errors when buffer changes
+  useEffect(() => {
+    const errors: Record<string, string> = {};
+    Object.entries(attendanceBuffer).forEach(([userId, buffer]) => {
+      if (buffer.status === RecordStatus.DRAFT || !buffer.status) {
+        const error = validateAttendanceRecord(userId, buffer);
+        if (error) {
+          errors[userId] = error;
+        }
+      }
+    });
+    setValidationErrors(errors);
+  }, [attendanceBuffer]);
+
+  // Keyboard shortcuts will be set up after handleSaveAllAttendance is defined
 
   useEffect(() => {
     const existing = dailyAttendance.filter(r => r.date === selectedDate);
@@ -380,6 +450,24 @@ const Timekeeping: React.FC = () => {
 
   const handleSaveAllAttendance = async () => {
     if (isOnlyEmployee) return;
+    
+    // Check validation before saving
+    const errors: Record<string, string> = {};
+    Object.entries(attendanceBuffer).forEach(([userId, buffer]) => {
+      if (buffer.status === RecordStatus.DRAFT || !buffer.status) {
+        const error = validateAttendanceRecord(userId, buffer);
+        if (error) {
+          errors[userId] = error;
+        }
+      }
+    });
+    
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      showToast(`Có ${Object.keys(errors).length} lỗi cần sửa trước khi lưu`, 'error');
+      return;
+    }
+    
     setActionProcessing('SAVE');
     await new Promise(resolve => setTimeout(resolve, 800));
     const records = (Object.values(attendanceBuffer) as Partial<AttendanceRecord>[]).map(r => ({ 
@@ -391,6 +479,186 @@ const Timekeeping: React.FC = () => {
     setActionProcessing(null);
     setLastActionStatus({ id: 'SAVE', type: 'SUCCESS' });
     setTimeout(() => setLastActionStatus(null), 2000);
+    setValidationErrors({});
+  };
+
+  // Update ref when handleSaveAllAttendance changes
+  useEffect(() => {
+    handleSaveAllAttendanceRef.current = handleSaveAllAttendance;
+  }, [handleSaveAllAttendance]);
+
+  // Keyboard shortcuts: Ctrl+S to save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+S or Cmd+S to save
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (!isOnlyEmployee && !actionProcessing && handleSaveAllAttendanceRef.current) {
+          handleSaveAllAttendanceRef.current();
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOnlyEmployee, actionProcessing]);
+
+  // Bulk edit functions
+  const handleBulkFill = (field: 'hours' | 'overtimeHours' | 'type' | 'output' | 'dailyWorkItemId', value: any) => {
+    if (selectedUserIds.size === 0) {
+      showToast('Vui lòng chọn ít nhất một nhân viên', 'ERROR');
+      return;
+    }
+    
+    const newBuffer = { ...attendanceBuffer };
+    selectedUserIds.forEach(userId => {
+      const currentBuffer = newBuffer[userId] || {};
+      newBuffer[userId] = {
+        ...currentBuffer,
+        [field]: value,
+        status: currentBuffer.status || RecordStatus.DRAFT
+      };
+    });
+    setAttendanceBuffer(newBuffer);
+    showToast(`Đã áp dụng cho ${selectedUserIds.size} nhân viên`, 'SUCCESS');
+  };
+
+  const handleBulkFillDown = (field: 'hours' | 'overtimeHours' | 'type' | 'output' | 'dailyWorkItemId', sourceUserId: string) => {
+    const sourceBuffer = attendanceBuffer[sourceUserId];
+    if (!sourceBuffer) return;
+    
+    const value = sourceBuffer[field as keyof typeof sourceBuffer];
+    if (value === undefined || value === null) {
+      showToast('Giá trị nguồn không hợp lệ', 'ERROR');
+      return;
+    }
+    
+    const newBuffer = { ...attendanceBuffer };
+    const sortedUserIds = currentDeptUsers.map(u => u.id);
+    const sourceIndex = sortedUserIds.indexOf(sourceUserId);
+    
+    if (sourceIndex === -1 || sourceIndex === sortedUserIds.length - 1) {
+      showToast('Không thể fill down từ dòng cuối', 'ERROR');
+      return;
+    }
+    
+    let fillCount = 0;
+    for (let i = sourceIndex + 1; i < sortedUserIds.length; i++) {
+      const targetUserId = sortedUserIds[i];
+      const currentBuffer = newBuffer[targetUserId] || {};
+      newBuffer[targetUserId] = {
+        ...currentBuffer,
+        [field]: value,
+        status: currentBuffer.status || RecordStatus.DRAFT
+      };
+      fillCount++;
+    }
+    
+    setAttendanceBuffer(newBuffer);
+    showToast(`Đã fill down cho ${fillCount} nhân viên`, 'SUCCESS');
+  };
+
+  // Copy/paste from Excel
+  const handlePasteFromExcel = async (e: React.ClipboardEvent) => {
+    if (isOnlyEmployee) return;
+    
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text');
+    const lines = pastedData.split('\n').filter(line => line.trim());
+    
+    if (lines.length === 0) {
+      showToast('Không có dữ liệu để paste', 'ERROR');
+      return;
+    }
+    
+    // Parse tab-separated or space-separated data
+    const rows = lines.map(line => {
+      // Try tab first, then space
+      const cells = line.includes('\t') ? line.split('\t') : line.split(/\s{2,}/);
+      return cells.map(cell => cell.trim()).filter(cell => cell);
+    });
+    
+    // Expected format: [Type, Hours, Overtime, Output/DailyWorkItem, ...]
+    // Or: [Hours, Overtime, ...]
+    const newBuffer = { ...attendanceBuffer };
+    let successCount = 0;
+    let errorCount = 0;
+    
+    currentDeptUsers.forEach((user, index) => {
+      if (index >= rows.length) return;
+      
+      const row = rows[index];
+      if (row.length === 0) return;
+      
+      const currentBuffer = newBuffer[user.id] || {
+        userId: user.id,
+        date: selectedDate,
+        status: RecordStatus.DRAFT
+      };
+      
+      try {
+        // Try to parse: [Type, Hours, Overtime, Output/DailyWorkItem]
+        if (row.length >= 3) {
+          // Check if first cell is a type
+          const possibleType = row[0].toUpperCase();
+          const attendanceTypes = Object.values(AttendanceType);
+          if (attendanceTypes.includes(possibleType as AttendanceType)) {
+            currentBuffer.type = possibleType as AttendanceType;
+            currentBuffer.hours = parseFloat(row[1]) || currentBuffer.hours || 8;
+            currentBuffer.overtimeHours = parseFloat(row[2]) || currentBuffer.overtimeHours || 0;
+            
+            if (row.length >= 4) {
+              if (currentBuffer.type === AttendanceType.PIECEWORK) {
+                currentBuffer.output = parseFloat(row[3]) || currentBuffer.output;
+              } else if (currentBuffer.type === AttendanceType.DAILY) {
+                currentBuffer.dailyWorkItemId = row[3] || currentBuffer.dailyWorkItemId;
+              }
+            }
+          } else {
+            // Assume format: [Hours, Overtime, ...]
+            currentBuffer.hours = parseFloat(row[0]) || currentBuffer.hours || 8;
+            currentBuffer.overtimeHours = parseFloat(row[1]) || currentBuffer.overtimeHours || 0;
+          }
+        } else if (row.length === 2) {
+          // Format: [Hours, Overtime]
+          currentBuffer.hours = parseFloat(row[0]) || currentBuffer.hours || 8;
+          currentBuffer.overtimeHours = parseFloat(row[1]) || currentBuffer.overtimeHours || 0;
+        } else if (row.length === 1) {
+          // Format: [Hours]
+          currentBuffer.hours = parseFloat(row[0]) || currentBuffer.hours || 8;
+        }
+        
+        newBuffer[user.id] = currentBuffer;
+        successCount++;
+      } catch (error) {
+        errorCount++;
+      }
+    });
+    
+    setAttendanceBuffer(newBuffer);
+    if (successCount > 0) {
+      showToast(`Đã paste ${successCount} dòng${errorCount > 0 ? `, ${errorCount} lỗi` : ''}`, successCount > errorCount ? 'SUCCESS' : 'WARNING');
+    } else {
+      showToast('Không thể paste dữ liệu', 'ERROR');
+    }
+  };
+
+  const toggleUserSelection = (userId: string) => {
+    const newSet = new Set(selectedUserIds);
+    if (newSet.has(userId)) {
+      newSet.delete(userId);
+    } else {
+      newSet.add(userId);
+    }
+    setSelectedUserIds(newSet);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedUserIds.size === currentDeptUsers.length) {
+      setSelectedUserIds(new Set());
+    } else {
+      setSelectedUserIds(new Set(currentDeptUsers.map(u => u.id)));
+    }
   };
 
   const handleActionBatch = async (action: 'SUBMIT' | 'APPROVE' | 'REJECT') => {
@@ -764,6 +1032,57 @@ const Timekeeping: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-3 text-left">
                     <h3 className="font-bold text-slate-800 uppercase text-xs tracking-widest flex items-center gap-2 text-left"><UserCheck size={16} className="text-indigo-500"/> Chấm công nhân sự ngày {selectedDate}</h3>
                     
+                    {!isOnlyEmployee && (
+                      <div className="flex gap-2 items-center flex-wrap">
+                        <button
+                          onClick={() => {
+                            setBulkEditMode(!bulkEditMode);
+                            if (bulkEditMode) setSelectedUserIds(new Set());
+                          }}
+                          className={`px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase flex items-center gap-1.5 transition-all ${bulkEditMode ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
+                          title="Bulk edit mode"
+                        >
+                          <ListPlus size={12}/>
+                          {bulkEditMode ? 'Tắt Bulk' : 'Bulk Edit'}
+                        </button>
+                        {bulkEditMode && selectedUserIds.size > 0 && (
+                          <>
+                            <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-lg text-[9px] font-black">
+                              {selectedUserIds.size} đã chọn
+                            </span>
+                            <div className="flex gap-1 items-center">
+                              <button
+                                onClick={() => {
+                                  const firstSelected = Array.from(selectedUserIds)[0];
+                                  if (firstSelected) {
+                                    const buffer = attendanceBuffer[firstSelected];
+                                    if (buffer?.hours) handleBulkFill('hours', buffer.hours);
+                                  }
+                                }}
+                                className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-[9px] font-bold hover:bg-emerald-200"
+                                title="Fill giờ chính từ dòng đầu tiên"
+                              >
+                                Fill Giờ
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const firstSelected = Array.from(selectedUserIds)[0];
+                                  if (firstSelected) {
+                                    handleBulkFillDown('hours', firstSelected);
+                                  }
+                                }}
+                                className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-[9px] font-bold hover:bg-blue-200"
+                                title="Fill down giờ chính"
+                              >
+                                Fill ↓
+                              </button>
+                            </div>
+                          </>
+                        )}
+                        <span className="text-[9px] text-slate-500 italic">Ctrl+V để paste từ Excel</span>
+                      </div>
+                    )}
+                    
                     <div className="flex gap-2 text-left">
                         {isKTL && actionableBatch.hasDraft && (
                             <button 
@@ -789,19 +1108,41 @@ const Timekeeping: React.FC = () => {
                   </div>
                   {!isOnlyEmployee && (
                     <button 
+                        data-save-attendance
                         onClick={handleSaveAllAttendance} 
                         disabled={!!actionProcessing}
-                        className={`px-8 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg transition-all active:scale-95 ${lastActionStatus?.id === 'SAVE' ? 'bg-emerald-600 scale-105' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
+                        className={`px-8 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg transition-all active:scale-95 ${lastActionStatus?.id === 'SAVE' ? 'bg-emerald-600 scale-105' : 'bg-indigo-600 hover:bg-indigo-700 text-white'} ${Object.keys(validationErrors).length > 0 ? 'ring-2 ring-rose-500' : ''}`}
+                        title={Object.keys(validationErrors).length > 0 ? `Có ${Object.keys(validationErrors).length} lỗi cần sửa` : 'Lưu nháp (Ctrl+S)'}
                     >
                         {actionProcessing === 'SAVE' ? <Loader2 size={16} className="animate-spin"/> : <Save size={16}/>} 
                         {lastActionStatus?.id === 'SAVE' ? 'ĐÃ LƯU NHÁP' : 'LƯU NHÁP BẢNG CÔNG'}
+                        {Object.keys(validationErrors).length > 0 && (
+                            <span className="ml-1 px-2 py-0.5 bg-rose-500 text-white text-[9px] rounded-full font-black animate-pulse">
+                                {Object.keys(validationErrors).length}
+                            </span>
+                        )}
                     </button>
                   )}
               </div>
-              <div className="overflow-x-auto custom-scrollbar text-left">
+              <div 
+                className="overflow-x-auto custom-scrollbar text-left"
+                onPaste={handlePasteFromExcel}
+                title="Paste dữ liệu từ Excel (Ctrl+V)"
+              >
                   <table className="w-full text-left text-xs table-fixed min-w-[1600px]">
                       <thead className="bg-slate-50 text-slate-400 font-black uppercase text-[9px] border-b sticky top-0 z-10">
                           <tr className="text-center">
+                              {!isOnlyEmployee && bulkEditMode && (
+                                <th className="px-3 py-5 w-12">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedUserIds.size === currentDeptUsers.length && currentDeptUsers.length > 0}
+                                    onChange={toggleSelectAll}
+                                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                    title="Chọn tất cả"
+                                  />
+                                </th>
+                              )}
                               <th className="px-6 py-5 text-left w-56">Nhân viên / Trạng thái</th>
                               <th className="px-2 py-5 w-32">Loại công</th>
                               <th className="px-2 py-5 w-20">Giờ chính</th>
@@ -821,22 +1162,220 @@ const Timekeeping: React.FC = () => {
                               const dept = departments.find(d => d.id === u.currentDeptId || d.id === u.sideDeptId);
                               const hasPermission = canApproveStatus(currentUser!, buffer.status || RecordStatus.DRAFT, dept, systemConfig.approvalWorkflow, departments, systemRoles, 'ATTENDANCE', approvalWorkflows);
 
+                              const status = buffer.status || RecordStatus.DRAFT;
+                              const statusColor = getStatusColor(status);
+                              const rowBgColor = status === RecordStatus.APPROVED ? 'bg-emerald-50/30 hover:bg-emerald-50/50' : 
+                                                 status === RecordStatus.REJECTED ? 'bg-rose-50/30 hover:bg-rose-50/50' :
+                                                 status !== RecordStatus.DRAFT ? 'bg-blue-50/20 hover:bg-blue-50/40' : 
+                                                 'hover:bg-slate-50/80';
+                              const TypeIcon = buffer.type ? ATTENDANCE_ICONS[buffer.type] : Timer;
+                              const typeColor = buffer.type ? ATTENDANCE_COLORS[buffer.type] : 'text-slate-600 bg-slate-50 border-slate-200';
+                              const hasError = validationErrors[u.id];
+                              const fieldId = `att-${u.id}`;
+
                               return (
-                                  <tr key={u.id} className="hover:bg-slate-50/80 text-center transition-colors">
+                                  <tr key={u.id} className={`${rowBgColor} text-center transition-colors border-l-4 ${hasError ? 'border-l-rose-500' : status === RecordStatus.APPROVED ? 'border-l-emerald-500' : status === RecordStatus.REJECTED ? 'border-l-rose-500' : status !== RecordStatus.DRAFT ? 'border-l-blue-500' : 'border-l-transparent'} ${selectedUserIds.has(u.id) && bulkEditMode ? 'ring-2 ring-indigo-500 bg-indigo-50/50' : ''}`}>
+                                      {!isOnlyEmployee && bulkEditMode && (
+                                        <td className="px-3 py-4">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedUserIds.has(u.id)}
+                                            onChange={() => toggleUserSelection(u.id)}
+                                            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                            title="Chọn nhân viên này"
+                                          />
+                                        </td>
+                                      )}
                                       <td className="px-6 py-4 text-left border-r bg-slate-50/30">
                                           <div className="flex items-center gap-3">
-                                              <img src={u.avatar} className="w-10 h-10 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-100"/>
-                                              <div className="text-left">
+                                              <div className="relative">
+                                                  <img src={u.avatar} className="w-10 h-10 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-100"/>
+                                                  {status === RecordStatus.APPROVED && (
+                                                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
+                                                          <Check size={10} className="text-white"/>
+                                                      </div>
+                                                  )}
+                                                  {status === RecordStatus.REJECTED && (
+                                                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-rose-500 rounded-full border-2 border-white flex items-center justify-center">
+                                                          <X size={10} className="text-white"/>
+                                                      </div>
+                                                  )}
+                                                  {hasError && (status === RecordStatus.DRAFT || !status) && (
+                                                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-rose-500 rounded-full border-2 border-white flex items-center justify-center animate-pulse">
+                                                          <AlertCircle size={10} className="text-white"/>
+                                                      </div>
+                                                  )}
+                                              </div>
+                                              <div className="text-left flex-1">
                                                 <p className="font-black text-slate-800 text-sm leading-tight">{u.name}</p>
                                                 <div className="mt-1">{getStatusBadge(buffer as AttendanceRecord)}</div>
+                                                {hasError && (
+                                                    <div className="mt-1 text-[9px] text-rose-600 font-bold flex items-center gap-1 animate-pulse">
+                                                        <AlertCircle size={10}/>
+                                                        {hasError}
+                                                    </div>
+                                                )}
                                               </div>
                                           </div>
                                       </td>
                                       <td className="px-2 py-4">
-                                          <select className="w-full px-2 py-1.5 border rounded-lg font-bold bg-white text-[10px] outline-none focus:border-indigo-500" value={buffer.type} onChange={e => setAttendanceBuffer({...attendanceBuffer, [u.id]: {...buffer, type: e.target.value as AttendanceType}})} disabled={isOnlyEmployee || (buffer.status !== undefined && buffer.status !== RecordStatus.DRAFT)}>{Object.values(AttendanceType).map(t => <option key={t} value={t}>{ATTENDANCE_LABELS[t]}</option>)}</select>
+                                          <div className="relative group">
+                                              <div className="flex items-center gap-1.5">
+                                                  {buffer.type && TypeIcon && (
+                                                      <div className={`p-1.5 rounded-lg ${typeColor.split(' ').slice(1, 3).join(' ')} border ${typeColor.split(' ')[2]}`}>
+                                                          <TypeIcon size={14} className={typeColor.split(' ')[0]}/>
+                                                      </div>
+                                                  )}
+                                                  <select 
+                                                      id={`${fieldId}-type`}
+                                                      className={`flex-1 px-2 py-1.5 border-2 rounded-lg font-bold text-[10px] outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${validationErrors[u.id] && !buffer.type ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-200' : typeColor} ${focusedField === `${fieldId}-type` ? 'ring-2 ring-indigo-300' : ''}`}
+                                                      value={buffer.type || ''} 
+                                                      onChange={e => {
+                                                          const newBuffer = {...buffer, type: e.target.value as AttendanceType};
+                                                          setAttendanceBuffer({...attendanceBuffer, [u.id]: newBuffer});
+                                                          // Clear error if fixed
+                                                          if (validationErrors[u.id] && validateAttendanceRecord(u.id, newBuffer) === null) {
+                                                              setValidationErrors(prev => {
+                                                                  const next = {...prev};
+                                                                  delete next[u.id];
+                                                                  return next;
+                                                              });
+                                                          }
+                                                      }}
+                                                      onFocus={() => setFocusedField(`${fieldId}-type`)}
+                                                      onBlur={() => setFocusedField(null)}
+                                                      onKeyDown={(e) => {
+                                                          if (e.key === 'Enter' || e.key === 'Tab') {
+                                                              e.preventDefault();
+                                                              const nextField = document.getElementById(`${fieldId}-hours`);
+                                                              if (nextField) nextField.focus();
+                                                          }
+                                                      }}
+                                                      disabled={isOnlyEmployee || (buffer.status !== undefined && buffer.status !== RecordStatus.DRAFT)}
+                                                      title={buffer.type ? ATTENDANCE_LABELS[buffer.type] : 'Chọn loại công'}
+                                                  >
+                                                      <option value="">-- Chọn loại --</option>
+                                                      {Object.values(AttendanceType).map(t => (
+                                                          <option key={t} value={t}>{ATTENDANCE_LABELS[t]}</option>
+                                                      ))}
+                                                  </select>
+                                              </div>
+                                          </div>
                                       </td>
-                                      <td className="px-2 py-4"><input type="number" step="0.5" className="w-full px-2 py-1.5 border rounded-lg font-black text-center text-indigo-600 outline-none" value={buffer.hours} onChange={e => setAttendanceBuffer({...attendanceBuffer, [u.id]: {...buffer, hours: Number(e.target.value)}})} disabled={isOnlyEmployee || (buffer.status !== undefined && buffer.status !== RecordStatus.DRAFT)}/></td>
-                                      <td className="px-2 py-4">{buffer.type === AttendanceType.PIECEWORK ? (<div className="relative"><input type="number" placeholder="Sản lượng..." className="w-full px-2 py-1.5 border rounded-lg bg-emerald-50 text-[10px] text-center font-black text-emerald-700 pr-6 outline-none" value={buffer.output || ''} onChange={e => setAttendanceBuffer({...attendanceBuffer, [u.id]: {...buffer, output: Number(e.target.value)}})} disabled={isOnlyEmployee || (buffer.status !== undefined && buffer.status !== RecordStatus.DRAFT)}/><span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[8px] text-emerald-300 font-bold uppercase">SP</span></div>) : buffer.type === AttendanceType.DAILY ? (<select className="w-full px-2 py-1.5 border rounded-lg bg-blue-50 text-[9px] font-bold outline-none text-blue-700" value={buffer.dailyWorkItemId || ''} onChange={e => setAttendanceBuffer({...attendanceBuffer, [u.id]: {...buffer, dailyWorkItemId: e.target.value}})} disabled={isOnlyEmployee || (buffer.status !== undefined && buffer.status !== RecordStatus.DRAFT)}><option value="">-- Chọn việc nhật --</option>{dailyWorkCatalog.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>) : (<span className="text-[10px] text-slate-300 italic font-medium">Theo quy định công</span>)}</td>
+                                      <td className="px-2 py-4">
+                                          <div className="relative group">
+                                              <input 
+                                                  id={`${fieldId}-hours`}
+                                                  type="number" 
+                                                  step="0.5" 
+                                                  className={`w-full px-2 py-1.5 border-2 rounded-lg font-black text-center text-indigo-600 outline-none transition-all ${validationErrors[u.id] && (buffer.hours === undefined || buffer.hours === null || buffer.hours <= 0) ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-200' : (buffer.hours || 0) > 24 ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-200' : (buffer.hours || 0) > 12 ? 'border-amber-500 bg-amber-50' : (buffer.hours || 0) <= 0 && buffer.hours !== undefined && buffer.hours !== null ? 'border-rose-300 bg-rose-50/50' : 'border-indigo-200 focus:border-indigo-500'} ${focusedField === `${fieldId}-hours` ? 'ring-2 ring-indigo-300' : ''}`}
+                                                  value={buffer.hours || ''} 
+                                                  onChange={e => {
+                                                      const newBuffer = {...buffer, hours: Number(e.target.value)};
+                                                      setAttendanceBuffer({...attendanceBuffer, [u.id]: newBuffer});
+                                                      // Clear error if fixed
+                                                      if (validationErrors[u.id] && validateAttendanceRecord(u.id, newBuffer) === null) {
+                                                          setValidationErrors(prev => {
+                                                              const next = {...prev};
+                                                              delete next[u.id];
+                                                              return next;
+                                                          });
+                                                      }
+                                                  }}
+                                                  onFocus={() => setFocusedField(`${fieldId}-hours`)}
+                                                  onBlur={() => setFocusedField(null)}
+                                                  onKeyDown={(e) => {
+                                                      if (e.key === 'Enter') {
+                                                          e.preventDefault();
+                                                          const nextField = document.getElementById(`${fieldId}-overtime`);
+                                                          if (nextField) nextField.focus();
+                                                      }
+                                                  }}
+                                                  disabled={isOnlyEmployee || (buffer.status !== undefined && buffer.status !== RecordStatus.DRAFT)}
+                                                  placeholder="8"
+                                                  required
+                                              />
+                                              {((buffer.hours || 0) > 24 || (buffer.hours === undefined || buffer.hours === null || buffer.hours <= 0)) && (
+                                                  <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                                                      <AlertCircle size={14} className="text-rose-500"/>
+                                                  </div>
+                                              )}
+                                              <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                                  <div className="bg-slate-900 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap shadow-lg">
+                                                      Giờ công chính {
+                                                          (buffer.hours || 0) > 24 ? '⚠️ Vượt quá 24h' : 
+                                                          (buffer.hours === undefined || buffer.hours === null || buffer.hours <= 0) ? '⚠️ Chưa nhập hoặc ≤ 0' : 
+                                                          ''
+                                                      }
+                                                  </div>
+                                              </div>
+                                          </div>
+                                      </td>
+                                      <td className="px-2 py-4">{buffer.type === AttendanceType.PIECEWORK ? (
+                                          <div className="relative">
+                                              <input 
+                                                  id={`${fieldId}-output`}
+                                                  type="number" 
+                                                  placeholder="Sản lượng..." 
+                                                  className={`w-full px-2 py-1.5 border-2 rounded-lg bg-emerald-50 text-[10px] text-center font-black text-emerald-700 pr-6 outline-none transition-all ${validationErrors[u.id] && buffer.type === AttendanceType.PIECEWORK && (buffer.output === undefined || buffer.output === null || buffer.output < 0) ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-200' : 'border-emerald-200 focus:border-emerald-500'} ${focusedField === `${fieldId}-output` ? 'ring-2 ring-emerald-300' : ''}`}
+                                                  value={buffer.output || ''} 
+                                                  onChange={e => {
+                                                      const newBuffer = {...buffer, output: Number(e.target.value)};
+                                                      setAttendanceBuffer({...attendanceBuffer, [u.id]: newBuffer});
+                                                      if (validationErrors[u.id] && validateAttendanceRecord(u.id, newBuffer) === null) {
+                                                          setValidationErrors(prev => {
+                                                              const next = {...prev};
+                                                              delete next[u.id];
+                                                              return next;
+                                                          });
+                                                      }
+                                                  }}
+                                                  onFocus={() => setFocusedField(`${fieldId}-output`)}
+                                                  onBlur={() => setFocusedField(null)}
+                                                  onKeyDown={(e) => {
+                                                      if (e.key === 'Enter') {
+                                                          e.preventDefault();
+                                                          const nextField = document.getElementById(`${fieldId}-overtime`);
+                                                          if (nextField) nextField.focus();
+                                                      }
+                                                  }}
+                                                  disabled={isOnlyEmployee || (buffer.status !== undefined && buffer.status !== RecordStatus.DRAFT)}
+                                              />
+                                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[8px] text-emerald-300 font-bold uppercase">SP</span>
+                                          </div>
+                                      ) : buffer.type === AttendanceType.DAILY ? (
+                                          <select 
+                                              id={`${fieldId}-daily`}
+                                              className={`w-full px-2 py-1.5 border-2 rounded-lg bg-blue-50 text-[9px] font-bold outline-none text-blue-700 transition-all ${validationErrors[u.id] && buffer.type === AttendanceType.DAILY && !buffer.dailyWorkItemId ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-200' : 'border-blue-200 focus:border-blue-500'} ${focusedField === `${fieldId}-daily` ? 'ring-2 ring-blue-300' : ''}`}
+                                              value={buffer.dailyWorkItemId || ''} 
+                                              onChange={e => {
+                                                  const newBuffer = {...buffer, dailyWorkItemId: e.target.value};
+                                                  setAttendanceBuffer({...attendanceBuffer, [u.id]: newBuffer});
+                                                  if (validationErrors[u.id] && validateAttendanceRecord(u.id, newBuffer) === null) {
+                                                      setValidationErrors(prev => {
+                                                          const next = {...prev};
+                                                          delete next[u.id];
+                                                          return next;
+                                                      });
+                                                  }
+                                              }}
+                                              onFocus={() => setFocusedField(`${fieldId}-daily`)}
+                                              onBlur={() => setFocusedField(null)}
+                                              onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                      e.preventDefault();
+                                                      const nextField = document.getElementById(`${fieldId}-overtime`);
+                                                      if (nextField) nextField.focus();
+                                                  }
+                                              }}
+                                              disabled={isOnlyEmployee || (buffer.status !== undefined && buffer.status !== RecordStatus.DRAFT)}
+                                          >
+                                              <option value="">-- Chọn việc nhật --</option>
+                                              {dailyWorkCatalog.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                                          </select>
+                                      ) : (
+                                          <span className="text-[10px] text-slate-300 italic font-medium">Theo quy định công</span>
+                                      )}</td>
                                       <td className="px-2 py-4 bg-emerald-50/30">
                                           {buffer.type === AttendanceType.PIECEWORK ? (
                                               <div className="relative">
@@ -845,7 +1384,29 @@ const Timekeeping: React.FC = () => {
                                               </div>
                                           ) : <span className="text-slate-300">--</span>}
                                       </td>
-                                      <td className="px-2 py-4"><input type="number" step="0.5" className="w-full px-2 py-1.5 border rounded-lg font-black text-center text-orange-600 outline-none" value={buffer.overtimeHours} onChange={e => setAttendanceBuffer({...attendanceBuffer, [u.id]: {...buffer, overtimeHours: Number(e.target.value)}})} disabled={isOnlyEmployee || (buffer.status !== undefined && buffer.status !== RecordStatus.DRAFT)}/></td>
+                                      <td className="px-2 py-4">
+                                          <div className="relative group">
+                                              <input 
+                                                  type="number" 
+                                                  step="0.5" 
+                                                  className={`w-full px-2 py-1.5 border-2 rounded-lg font-black text-center text-orange-600 outline-none transition-all ${(buffer.overtimeHours || 0) > (buffer.hours || 0) ? 'border-rose-500 bg-rose-50' : 'border-orange-200 focus:border-orange-500'}`}
+                                                  value={buffer.overtimeHours} 
+                                                  onChange={e => setAttendanceBuffer({...attendanceBuffer, [u.id]: {...buffer, overtimeHours: Number(e.target.value)}})} 
+                                                  disabled={isOnlyEmployee || (buffer.status !== undefined && buffer.status !== RecordStatus.DRAFT)}
+                                                  placeholder="0"
+                                              />
+                                              {(buffer.overtimeHours || 0) > (buffer.hours || 0) && (buffer.hours || 0) > 0 && (
+                                                  <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                                                      <AlertCircle size={14} className="text-rose-500"/>
+                                                  </div>
+                                              )}
+                                              <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                                  <div className="bg-slate-900 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap shadow-lg">
+                                                      Giờ tăng ca {(buffer.overtimeHours || 0) > (buffer.hours || 0) && (buffer.hours || 0) > 0 ? '⚠️ Vượt giờ chính' : ''}
+                                                  </div>
+                                              </div>
+                                          </div>
+                                      </td>
                                       <td className="px-2 py-4 bg-orange-50/20">
                                           <select 
                                               className="w-full px-2 py-1.5 border border-orange-200 rounded-lg font-black text-center text-orange-700 outline-none bg-white text-[10px]" 
@@ -1178,50 +1739,167 @@ const Timekeeping: React.FC = () => {
                                 <p className="font-black uppercase tracking-widest text-[10px] text-left">Không có dữ liệu đánh giá trong kỳ này</p>
                             </div>
                         ) : (
-                            <div className="space-y-6 text-left text-left text-left">
-                                {filteredEvaluationsByDate.map(req => {
+                            <div className="relative">
+                                {/* Timeline line */}
+                                <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-indigo-200 via-indigo-300 to-indigo-200"></div>
+                                
+                                <div className="space-y-6 text-left text-left text-left relative">
+                                {filteredEvaluationsByDate.map((req, index) => {
                                     const isTargetMoney = req.target === EvaluationTarget.RESERVED_BONUS;
                                     const canApprove = canApproveThisEval(req);
 
+                                    const isApproved = req.status === RecordStatus.APPROVED;
+                                    const isRejected = req.status === RecordStatus.REJECTED;
+                                    const isPending = req.status !== RecordStatus.APPROVED && req.status !== RecordStatus.REJECTED;
+                                    
+                                    // Color coding based on status and type
+                                    const cardBorderColor = isApproved 
+                                        ? (req.type === 'BONUS' ? 'border-emerald-300' : 'border-rose-300')
+                                        : isRejected 
+                                        ? 'border-slate-300'
+                                        : 'border-indigo-200';
+                                    const cardBgColor = isApproved
+                                        ? (req.type === 'BONUS' ? 'bg-emerald-50/30' : 'bg-rose-50/30')
+                                        : isRejected
+                                        ? 'bg-slate-50'
+                                        : 'bg-white';
+                                    
                                     return (
-                                        <div key={req.id} id={`eval-${req.id}`} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden flex flex-col md:flex-row transition-all hover:shadow-xl hover:border-indigo-200 group text-left">
-                                            <div className={`w-2 shrink-0 ${req.type === 'BONUS' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-                                            <div className="flex-1 p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-8 text-left text-left text-left">
-                                                <div className="flex items-start gap-6 text-left text-left text-left">
-                                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-lg border-2 border-white transition-transform group-hover:scale-110 text-left text-left ${req.type === 'BONUS' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
-                                                        {req.type === 'BONUS' ? <ThumbsUp size={28}/> : <ThumbsDown size={28}/>}
+                                        <div key={req.id} id={`eval-${req.id}`} className={`relative ${cardBgColor} rounded-[32px] border-2 ${cardBorderColor} shadow-sm overflow-hidden flex flex-col md:flex-row transition-all hover:shadow-xl hover:scale-[1.01] group text-left`}>
+                                            {/* Timeline dot */}
+                                            <div className={`absolute left-6 top-8 w-4 h-4 rounded-full border-4 border-white shadow-lg z-10 ${
+                                                isApproved 
+                                                    ? (req.type === 'BONUS' ? 'bg-emerald-500' : 'bg-rose-500')
+                                                    : isRejected
+                                                    ? 'bg-slate-400'
+                                                    : 'bg-indigo-500 animate-pulse'
+                                            }`}></div>
+                                            
+                                            {/* Left border accent */}
+                                            <div className={`w-3 shrink-0 ${
+                                                isApproved 
+                                                    ? (req.type === 'BONUS' ? 'bg-gradient-to-b from-emerald-500 to-emerald-400' : 'bg-gradient-to-b from-rose-500 to-rose-400')
+                                                    : isRejected
+                                                    ? 'bg-gradient-to-b from-slate-400 to-slate-300'
+                                                    : 'bg-gradient-to-b from-indigo-500 to-indigo-400'
+                                            }`}></div>
+                                            
+                                            <div className="flex-1 p-8 pl-12 flex flex-col md:flex-row justify-between items-start md:items-center gap-8 text-left text-left text-left">
+                                                <div className="flex items-start gap-6 text-left text-left text-left flex-1">
+                                                    {/* Icon with status indicator */}
+                                                    <div className="relative shrink-0">
+                                                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 shadow-lg border-4 transition-all group-hover:scale-110 text-left text-left ${
+                                                            isApproved
+                                                                ? (req.type === 'BONUS' ? 'bg-emerald-500 text-white border-emerald-300' : 'bg-rose-500 text-white border-rose-300')
+                                                                : isRejected
+                                                                ? 'bg-slate-400 text-white border-slate-300'
+                                                                : (req.type === 'BONUS' ? 'bg-emerald-400 text-white border-emerald-200' : 'bg-rose-400 text-white border-rose-200')
+                                                        }`}>
+                                                            {req.type === 'BONUS' ? <ThumbsUp size={32}/> : <ThumbsDown size={32}/>}
+                                                        </div>
+                                                        {isApproved && (
+                                                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center shadow-lg">
+                                                                <Check size={12} className="text-white"/>
+                                                            </div>
+                                                        )}
+                                                        {isRejected && (
+                                                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-slate-500 rounded-full border-2 border-white flex items-center justify-center shadow-lg">
+                                                                <X size={12} className="text-white"/>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="text-left text-left">
-                                                        <div className="flex items-center gap-3 text-left text-left text-left">
-                                                            <p className="font-black text-slate-900 text-lg uppercase tracking-tight text-left text-left">{req.userName}</p>
-                                                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border shadow-sm text-left text-left ${getStatusColor(req.status)}`}>
-                                                                {req.status.replace('PENDING_', 'CHỜ ')}
+                                                    
+                                                    <div className="text-left text-left flex-1">
+                                                        {/* Header with user and status */}
+                                                        <div className="flex items-center gap-3 flex-wrap text-left text-left text-left mb-2">
+                                                            <p className="font-black text-slate-900 text-xl uppercase tracking-tight text-left text-left">{req.userName}</p>
+                                                            <span className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase border-2 shadow-sm text-left text-left ${
+                                                                isApproved 
+                                                                    ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                                                                    : isRejected
+                                                                    ? 'bg-slate-100 text-slate-700 border-slate-300'
+                                                                    : 'bg-indigo-100 text-indigo-700 border-indigo-300 animate-pulse'
+                                                            }`}>
+                                                                {req.status.replace('PENDING_', 'CHỜ ').replace('_', ' ')}
                                                             </span>
                                                         </div>
-                                                        <div className="flex items-center gap-4 mt-2 text-left text-left text-left">
-                                                            <span className="text-[11px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 uppercase text-left text-left">{req.criteriaName}</span>
-                                                            <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 text-left text-left"><Clock size={12}/> {formatDateTime(req.createdAt)}</span>
+                                                        
+                                                        {/* Criteria and date */}
+                                                        <div className="flex items-center gap-3 flex-wrap mt-3 text-left text-left text-left">
+                                                            <span className={`text-[11px] font-black px-3 py-1.5 rounded-lg border-2 uppercase text-left text-left ${
+                                                                req.type === 'BONUS' 
+                                                                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200' 
+                                                                    : 'text-rose-700 bg-rose-50 border-rose-200'
+                                                            }`}>
+                                                                {req.criteriaName}
+                                                            </span>
+                                                            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-lg border border-slate-200 text-left text-left">
+                                                                <Clock size={12}/> {formatDateTime(req.createdAt)}
+                                                            </span>
                                                         </div>
-                                                        <p className="text-sm text-slate-500 italic mt-4 font-medium leading-relaxed max-w-lg text-left text-left">"{req.description || 'Không có ghi chú diễn giải.'}"</p>
+                                                        
+                                                        {/* Description */}
+                                                        <div className="mt-4 p-4 bg-slate-50/50 rounded-xl border border-slate-200 text-left text-left">
+                                                            <p className="text-sm text-slate-600 font-medium leading-relaxed text-left text-left">
+                                                                <span className="text-slate-400 font-bold text-xs uppercase mr-2">Mô tả:</span>
+                                                                {req.description || <span className="italic text-slate-400">Không có ghi chú diễn giải.</span>}
+                                                            </p>
+                                                        </div>
+                                                        
+                                                        {/* Proof file if exists */}
+                                                        {req.proofFileName && (
+                                                            <div className="mt-3 flex items-center gap-2 text-left text-left">
+                                                                <Paperclip size={14} className="text-slate-400"/>
+                                                                <span className="text-[10px] font-bold text-slate-500 italic">{req.proofFileName}</span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 
-                                                <div className="flex flex-col items-end gap-5 shrink-0 text-right text-right">
-                                                    <div className="text-right text-right">
-                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-right text-right">Giá trị điều chỉnh</p>
-                                                        <p className={`text-3xl font-black tabular-nums tracking-tighter text-right text-right ${req.type === 'BONUS' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                <div className="flex flex-col items-end gap-5 shrink-0 text-right text-right min-w-[180px]">
+                                                    {/* Value card */}
+                                                    <div className={`text-right text-right p-5 rounded-2xl border-2 shadow-lg ${
+                                                        isApproved
+                                                            ? (req.type === 'BONUS' ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200')
+                                                            : isRejected
+                                                            ? 'bg-slate-50 border-slate-200'
+                                                            : (req.type === 'BONUS' ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200')
+                                                    }`}>
+                                                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest text-right text-right mb-2">Giá trị điều chỉnh</p>
+                                                        <p className={`text-4xl font-black tabular-nums tracking-tighter text-right text-right ${
+                                                            isApproved
+                                                                ? (req.type === 'BONUS' ? 'text-emerald-600' : 'text-rose-600')
+                                                                : isRejected
+                                                                ? 'text-slate-500'
+                                                                : (req.type === 'BONUS' ? 'text-emerald-500' : 'text-rose-500')
+                                                        }`}>
                                                             {req.type === 'BONUS' ? '+' : '-'}{isTargetMoney ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(req.points) : `${Math.abs(req.points)}% HQ`}
                                                         </p>
+                                                        {isTargetMoney && (
+                                                            <p className="text-[9px] font-bold text-slate-400 mt-1 text-right text-right">Từ thưởng treo</p>
+                                                        )}
                                                     </div>
 
+                                                    {/* Action buttons */}
                                                     {canApprove && req.status !== RecordStatus.APPROVED && req.status !== RecordStatus.REJECTED && (
-                                                        <div className="flex gap-2 text-left text-left text-left">
-                                                            <button onClick={() => approveEvaluationRequest(req.id)} className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs sm:text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-emerald-100 hover:bg-emerald-700 active:scale-95 transition-all touch-manipulation">
+                                                        <div className="flex flex-col gap-2 w-full text-left text-left text-left">
+                                                            <button onClick={() => approveEvaluationRequest(req.id)} className="w-full px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs sm:text-[10px] font-black uppercase flex items-center justify-center gap-2 shadow-lg shadow-emerald-100 hover:bg-emerald-700 active:scale-95 transition-all touch-manipulation">
                                                                 <CheckCircle size={16}/> Phê duyệt
                                                             </button>
-                                                            <button onClick={() => setRejectionModal({ isOpen: true, id: req.id })} className="px-6 py-3 bg-white text-rose-600 border-2 border-rose-100 rounded-xl text-xs sm:text-[10px] font-black uppercase flex items-center gap-2 hover:bg-rose-50 active:scale-95 transition-all touch-manipulation">
+                                                            <button onClick={() => setRejectionModal({ isOpen: true, id: req.id })} className="w-full px-6 py-3 bg-white text-rose-600 border-2 border-rose-200 rounded-xl text-xs sm:text-[10px] font-black uppercase flex items-center justify-center gap-2 hover:bg-rose-50 active:scale-95 transition-all touch-manipulation">
                                                                 <XCircle size={16}/> Từ chối
                                                             </button>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Status indicator for approved/rejected */}
+                                                    {(isApproved || isRejected) && (
+                                                        <div className={`w-full px-4 py-2 rounded-lg text-[9px] font-black uppercase text-center ${
+                                                            isApproved 
+                                                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                                                : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                                        }`}>
+                                                            {isApproved ? '✓ Đã duyệt' : '✗ Đã từ chối'}
                                                         </div>
                                                     )}
                                                 </div>
@@ -1229,6 +1907,7 @@ const Timekeeping: React.FC = () => {
                                         </div>
                                     );
                                 })}
+                                </div>
                             </div>
                         )}
                     </div>
