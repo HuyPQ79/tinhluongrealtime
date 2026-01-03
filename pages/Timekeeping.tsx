@@ -64,15 +64,32 @@ const Timekeeping: React.FC = () => {
     const deptParam = searchParams.get('deptId');
     const evalIdParam = searchParams.get('evalId');
 
-    if (tab === 'EVALUATION') setActiveMode('EVALUATION');
-    else if (tab === 'SUMMARY') setActiveMode('SUMMARY');
-    else setActiveMode('ATTENDANCE');
+    // Set active mode based on tab parameter
+    if (tab === 'EVALUATION') {
+      setActiveMode('EVALUATION');
+    } else if (tab === 'SUMMARY') {
+      setActiveMode('SUMMARY');
+    } else if (tab === 'ATTENDANCE' || !tab) {
+      setActiveMode('ATTENDANCE');
+    }
 
-    if (dateParam) setSelectedDate(dateParam);
-    if (deptParam) setSelectedDeptId(deptParam);
+    // Set date if provided (always set if param exists, let React handle deduplication)
+    if (dateParam) {
+      setSelectedDate(dateParam);
+    }
+
+    // Set department if provided and valid
+    if (deptParam) {
+      // Validate deptId exists in availableDepts
+      const isValidDept = availableDepts.some(d => d.id === deptParam) || deptParam === 'ALL';
+      if (isValidDept) {
+        setSelectedDeptId(deptParam);
+      }
+    }
     
     // Scroll đến evaluation request cụ thể nếu có evalId
     if (evalIdParam && tab === 'EVALUATION') {
+      // Wait for evaluations to load and render
       setTimeout(() => {
         const element = document.getElementById(`eval-${evalIdParam}`);
         if (element) {
@@ -81,10 +98,22 @@ const Timekeeping: React.FC = () => {
           setTimeout(() => {
             element.classList.remove('ring-4', 'ring-indigo-500', 'ring-offset-2');
           }, 3000);
+        } else {
+          // Retry after a longer delay if element not found (evaluations might still be loading)
+          setTimeout(() => {
+            const retryElement = document.getElementById(`eval-${evalIdParam}`);
+            if (retryElement) {
+              retryElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              retryElement.classList.add('ring-4', 'ring-indigo-500', 'ring-offset-2');
+              setTimeout(() => {
+                retryElement.classList.remove('ring-4', 'ring-indigo-500', 'ring-offset-2');
+              }, 3000);
+            }
+          }, 1500);
         }
       }, 500);
     }
-  }, [searchParams]);
+  }, [searchParams, availableDepts]); // Depend on searchParams and availableDepts
 
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isCriteriaDropdownOpen, setIsCriteriaDropdownOpen] = useState(false);

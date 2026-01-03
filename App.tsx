@@ -355,7 +355,13 @@ const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
   const handleNotiClick = (noti: AppNotification) => {
       markNotiRead(noti.id);
       setIsNotiOpen(false);
-      if (noti.actionUrl) navigate(noti.actionUrl);
+      if (noti.actionUrl) {
+        // Ensure actionUrl works with HashRouter
+        // If actionUrl starts with /, it will work correctly with HashRouter
+        // If it doesn't start with /, add it
+        const url = noti.actionUrl.startsWith('/') ? noti.actionUrl : `/${noti.actionUrl}`;
+        navigate(url);
+      }
   };
 
   return (
