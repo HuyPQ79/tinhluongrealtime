@@ -50,10 +50,6 @@ const FormulaConfig: React.FC = () => {
   // Local state cho maxHoursForHRReview để dễ chỉnh sửa
   const [maxHoursInput, setMaxHoursInput] = useState<string>('');
   const [isSavingMaxHours, setIsSavingMaxHours] = useState(false);
-  
-  // Local state cho maxHoursForHRReview để dễ chỉnh sửa
-  const [maxHoursInput, setMaxHoursInput] = useState<string>('');
-  const [isSavingMaxHours, setIsSavingMaxHours] = useState(false);
 
   // SystemRoles & ApprovalWorkflows
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
