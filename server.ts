@@ -301,6 +301,12 @@ const createCrud = (
           const existing = await model.findUnique({ where: { id: data.id } });
           isUpdate = !!existing;
           
+          // Lấy oldStatus trước khi upsert (cho evaluationRequest)
+          let oldStatus = null;
+          if (modelName === 'evaluationRequest' && existing) {
+            oldStatus = (existing as any).status;
+          }
+          
           item = await model.upsert({
             where: { id: data.id },
             update: updateData,
@@ -317,14 +323,67 @@ const createCrud = (
         const entityName = modelName.toUpperCase().replace(/([A-Z])/g, '_$1').replace(/^_/, '');
         const itemName = (item as any).name || (item as any).code || (item as any).id || 'Unknown';
         
-        await createAuditLog(
-          `${actionName}_${entityName}`,
-          currentUser?.name || 'System',
-          currentUser?.id,
-          `${isUpdate ? 'Cập nhật' : 'Tạo mới'} ${modelName}: ${itemName}`,
-          entityName,
-          item.id
-        );
+        // Xử lý đặc biệt cho evaluationRequest: ghi log riêng cho approve/reject
+        if (modelName === 'evaluationRequest') {
+          const newStatus = (item as any).status;
+          
+          // Nếu có thay đổi status sang APPROVED hoặc REJECTED, ghi log riêng
+          if (oldStatus && newStatus && oldStatus !== newStatus) {
+            const evalUser = await prisma.user.findUnique({ where: { id: (item as any).userId }, select: { name: true } });
+            const criteria = await prisma.criterion.findUnique({ where: { id: (item as any).criteriaId }, select: { name: true } });
+            
+            if (newStatus === 'APPROVED') {
+              await createAuditLog(
+                'APPROVE_EVALUATION',
+                currentUser?.name || 'System',
+                currentUser?.id,
+                `Phê duyệt phiếu đánh giá "${criteria?.name || (item as any).criteriaName}" cho ${evalUser?.name || (item as any).userId}`,
+                'EVALUATION',
+                item.id
+              );
+            } else if (newStatus === 'REJECTED') {
+              await createAuditLog(
+                'REJECT_EVALUATION',
+                currentUser?.name || 'System',
+                currentUser?.id,
+                `Từ chối phiếu đánh giá "${criteria?.name || (item as any).criteriaName}" cho ${evalUser?.name || (item as any).userId}${(item as any).rejectionReason ? `. Lý do: ${(item as any).rejectionReason}` : ''}`,
+                'EVALUATION',
+                item.id
+              );
+            } else if (newStatus.startsWith('PENDING') && (!oldStatus.startsWith('PENDING') || oldStatus === 'DRAFT')) {
+              await createAuditLog(
+                'SUBMIT_EVALUATION',
+                currentUser?.name || 'System',
+                currentUser?.id,
+                `Gửi phiếu đánh giá "${criteria?.name || (item as any).criteriaName}" cho ${evalUser?.name || (item as any).userId} chờ phê duyệt`,
+                'EVALUATION',
+                item.id
+              );
+            }
+          }
+          
+          // Chỉ ghi log CREATE/UPDATE nếu không phải approve/reject/submit
+          if (!oldStatus || oldStatus === newStatus || (newStatus !== 'APPROVED' && newStatus !== 'REJECTED' && !newStatus.startsWith('PENDING'))) {
+            await createAuditLog(
+              `${actionName}_${entityName}`,
+              currentUser?.name || 'System',
+              currentUser?.id,
+              `${isUpdate ? 'Cập nhật' : 'Tạo mới'} ${modelName}: ${itemName}`,
+              entityName,
+              item.id
+            );
+          }
+        } else {
+          // Ghi log bình thường cho các model khác
+          await createAuditLog(
+            `${actionName}_${entityName}`,
+            currentUser?.name || 'System',
+            currentUser?.id,
+            `${isUpdate ? 'Cập nhật' : 'Tạo mới'} ${modelName}: ${itemName}`,
+            entityName,
+            item.id
+          );
+        }
         
         res.json(mapOut(item));
       } catch (e: any) {
@@ -1165,6 +1224,7 @@ app.post('/api/attendance', async (req: AuthRequest, res) => {
                 where: { userId_date: { userId: cleanRec.userId, date: cleanRec.date } }
             });
             const isUpdate = !!existing;
+            const oldStatus = existing?.status;
             
             const saved = await prisma.attendanceRecord.upsert({ 
                 where: { userId_date: { userId: cleanRec.userId, date: cleanRec.date } }, 
@@ -1174,28 +1234,54 @@ app.post('/api/attendance', async (req: AuthRequest, res) => {
             
             // Ghi audit log
             const user = await prisma.user.findUnique({ where: { id: saved.userId }, select: { name: true } });
-            const actionName = isUpdate ? 'UPDATE_ATTENDANCE' : 'CREATE_ATTENDANCE';
-            let details = `${isUpdate ? 'Cập nhật' : 'Tạo mới'} chấm công cho ${user?.name || saved.userId} ngày ${saved.date}`;
+            const newStatus = saved.status;
             
-            // Nếu có thay đổi status, ghi thêm thông tin
-            if (saved.status && saved.status !== 'DRAFT') {
-                if (saved.status === 'APPROVED') {
-                    details += ' - Đã phê duyệt';
-                } else if (saved.status === 'REJECTED') {
-                    details += ` - Đã từ chối${saved.rejectionReason ? `. Lý do: ${saved.rejectionReason}` : ''}`;
-                } else if (saved.status.startsWith('PENDING')) {
-                    details += ` - Gửi chờ phê duyệt (${saved.status})`;
+            // Nếu có thay đổi status từ DRAFT/PENDING sang APPROVED hoặc REJECTED, ghi log riêng
+            if (oldStatus && newStatus && oldStatus !== newStatus) {
+                if (newStatus === 'APPROVED') {
+                    await createAuditLog(
+                        'APPROVE_ATTENDANCE',
+                        currentUser?.name || 'System',
+                        currentUser?.id,
+                        `Phê duyệt chấm công cho ${user?.name || saved.userId} ngày ${saved.date}`,
+                        'ATTENDANCE',
+                        saved.id
+                    );
+                } else if (newStatus === 'REJECTED') {
+                    await createAuditLog(
+                        'REJECT_ATTENDANCE',
+                        currentUser?.name || 'System',
+                        currentUser?.id,
+                        `Từ chối chấm công cho ${user?.name || saved.userId} ngày ${saved.date}${saved.rejectionReason ? `. Lý do: ${saved.rejectionReason}` : ''}`,
+                        'ATTENDANCE',
+                        saved.id
+                    );
+                } else if (newStatus.startsWith('PENDING') && (!oldStatus.startsWith('PENDING') || oldStatus === 'DRAFT')) {
+                    await createAuditLog(
+                        'SUBMIT_ATTENDANCE',
+                        currentUser?.name || 'System',
+                        currentUser?.id,
+                        `Gửi chấm công cho ${user?.name || saved.userId} ngày ${saved.date} chờ phê duyệt (${newStatus})`,
+                        'ATTENDANCE',
+                        saved.id
+                    );
                 }
             }
             
-            await createAuditLog(
-                actionName,
-                currentUser?.name || 'System',
-                currentUser?.id,
-                details,
-                'ATTENDANCE',
-                saved.id
-            );
+            // Ghi log cho CREATE/UPDATE thông thường (chỉ khi không phải approve/reject)
+            if (!oldStatus || oldStatus === newStatus || (newStatus !== 'APPROVED' && newStatus !== 'REJECTED' && !newStatus.startsWith('PENDING'))) {
+                const actionName = isUpdate ? 'UPDATE_ATTENDANCE' : 'CREATE_ATTENDANCE';
+                let details = `${isUpdate ? 'Cập nhật' : 'Tạo mới'} chấm công cho ${user?.name || saved.userId} ngày ${saved.date}`;
+                
+                await createAuditLog(
+                    actionName,
+                    currentUser?.name || 'System',
+                    currentUser?.id,
+                    details,
+                    'ATTENDANCE',
+                    saved.id
+                );
+            }
             
             results.push(saved);
             
