@@ -19,7 +19,15 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
       rollupOptions: {
         input: path.resolve(process.cwd(), 'index.html'),
-      }
+      },
+      // Chỉ build các file frontend, bỏ qua server files
+      commonjsOptions: {
+        exclude: ['server.ts', 'seeder.ts'],
+      },
+    },
+    // Exclude server files from dependency optimization
+    optimizeDeps: {
+      exclude: ['server.ts', 'seeder.ts'],
     },
     server: {
       port: 3000,
