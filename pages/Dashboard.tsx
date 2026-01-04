@@ -282,7 +282,35 @@ const Dashboard: React.FC = () => {
     // Tính lương trong ngày (ngày endDate)
     const dailySalary = currentUser ? calculateDailySalary(currentUser.id, endDate) : 0;
 
-    return { totalWorkDays, tempNetSalary, totalPenaltyAccumulated, reservedBonusLeft, dailySalary };
+    // Tính phạt KPI trong ngày (ngày endDate)
+    const dailyKpiPenalties = evaluationRequests.filter(e => {
+      if (!currentUser || e.userId !== currentUser.id) return false;
+      const date = e.createdAt.split('T')[0];
+      return date === endDate && 
+             e.status === RecordStatus.APPROVED && 
+             e.type === 'PENALTY' &&
+             e.target === EvaluationTarget.MONTHLY_SALARY;
+    }).map(e => {
+      const criteria = criteriaList.find(c => c.id === e.criteriaId);
+      const group = criteriaGroups.find(g => g.id === criteria?.groupId);
+      if (!criteria || !group || !currentUser) return null;
+      const penaltyAmount = (criteria.value / 100) * (group.weight / 100) * (currentUser.efficiencySalary || 0);
+      return {
+        id: e.id,
+        criteriaName: criteria.name,
+        groupName: group.name,
+        value: criteria.value,
+        weight: group.weight,
+        points: e.points,
+        description: e.description,
+        createdAt: e.createdAt,
+        penaltyAmount
+      };
+    }).filter((e): e is NonNullable<typeof e> => e !== null);
+
+    const dailyKpiPenaltyAmount = dailyKpiPenalties.reduce((acc, curr) => acc + curr.penaltyAmount, 0);
+
+    return { totalWorkDays, tempNetSalary, totalPenaltyAccumulated, reservedBonusLeft, dailySalary, dailyKpiPenaltyAmount, dailyKpiPenalties };
   }, [dailyAttendance, evaluationRequests, currentUser, salaryRecords, endDate, startDate, criteriaList, criteriaGroups, allUsers, dailyWorkCatalog, getStandardWorkDays]);
 
   return (
@@ -509,7 +537,7 @@ const Dashboard: React.FC = () => {
                    </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 text-left text-left text-left text-left text-left">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-8 text-left text-left text-left text-left text-left">
                   <div className="bg-white p-10 rounded-[48px] border border-slate-100 shadow-xl group hover:border-indigo-300 transition-all hover:shadow-indigo-500/10 text-left text-left text-left text-left text-left">
                       <div className="p-4 bg-indigo-50 text-indigo-600 rounded-[28px] w-fit shadow-md text-left text-left text-left text-left text-left text-left"><Clock size={32}/></div>
                       <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mt-8 text-left text-left text-left text-left text-left text-left">Công lũy kế</p>
@@ -539,7 +567,52 @@ const Dashboard: React.FC = () => {
                       <p className="text-[11px] font-black text-amber-100 uppercase tracking-[0.2em] mt-8 opacity-80 text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left">Thưởng Treo Còn Lại</p>
                       <h3 className="text-4xl font-black mt-3 tabular-nums tracking-tighter text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left">{formatCurrency(personalStats.reservedBonusLeft)}</h3>
                   </div>
+                  <div className="bg-red-600 p-10 rounded-[48px] shadow-2xl text-white group relative overflow-hidden hover:-translate-y-1 transition-all text-left text-left text-left text-left text-left text-left">
+                      <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-bl-full -mr-16 -mt-16 transition-transform group-hover:scale-110 duration-700"></div>
+                      <div className="p-4 bg-white/20 text-red-100 rounded-[28px] w-fit shadow-xl"><Target size={32}/></div>
+                      <p className="text-[11px] font-black text-red-200 uppercase tracking-[0.2em] mt-8 opacity-80">Phạt KPI Trong Ngày</p>
+                      <h3 className="text-4xl font-black mt-3 tabular-nums tracking-tighter">{formatCurrency(personalStats.dailyKpiPenaltyAmount)}</h3>
+                      <div className="mt-8 flex items-center gap-2 text-red-100 font-bold text-[10px] uppercase tracking-widest"><Calendar size={14}/> {formatDate(endDate)}</div>
+                  </div>
               </div>
+
+              {/* Chi tiết lỗi vi phạm KPI trong ngày */}
+              {personalStats.dailyKpiPenalties.length > 0 && (
+                  <div className="bg-white rounded-[40px] border-4 border-red-100 shadow-xl p-8 text-left">
+                      <div className="flex items-center gap-4 mb-6">
+                          <div className="p-4 bg-red-50 text-red-600 rounded-[24px] shadow-md"><FileText size={32}/></div>
+                          <div>
+                              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Chi Tiết Lỗi Vi Phạm KPI</h3>
+                              <p className="text-sm text-slate-500 font-medium mt-1">Ngày {formatDate(endDate)}</p>
+                          </div>
+                      </div>
+                      <div className="space-y-4">
+                          {personalStats.dailyKpiPenalties.map((penalty) => (
+                              <div key={penalty.id} className="p-6 bg-slate-50 rounded-[24px] border-2 border-red-100 hover:border-red-300 transition-all group">
+                                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                      <div className="flex-1">
+                                          <div className="flex items-center gap-3 mb-2">
+                                              <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-[10px] font-black uppercase border border-red-200">{penalty.groupName}</span>
+                                              <span className="px-3 py-1 bg-rose-100 text-rose-700 rounded-full text-[10px] font-black uppercase border border-rose-200">{penalty.criteriaName}</span>
+                                              <span className="text-xs text-slate-400 font-bold">{formatDateTime(penalty.createdAt)}</span>
+                                          </div>
+                                          <p className="text-sm font-bold text-slate-700 mb-1">{penalty.description || 'Không có mô tả'}</p>
+                                          <div className="flex items-center gap-4 text-xs text-slate-500 mt-2">
+                                              <span>Giá trị: <span className="font-black text-red-600">{penalty.value}%</span></span>
+                                              <span>Trọng số: <span className="font-black text-red-600">{penalty.weight}%</span></span>
+                                              <span>Điểm: <span className="font-black text-red-600">{penalty.points}</span></span>
+                                          </div>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Số Tiền Phạt</p>
+                                          <p className="text-2xl font-black text-red-600 tabular-nums">{formatCurrency(penalty.penaltyAmount)}</p>
+                                      </div>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+              )}
           </div>
       )}
     </div>
