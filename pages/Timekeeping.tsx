@@ -1075,7 +1075,7 @@ const Timekeeping: React.FC = () => {
                             if (bulkEditMode) setSelectedUserIds(new Set());
                           }}
                           className={`px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase flex items-center gap-1.5 transition-all ${bulkEditMode ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
-                          title="Bulk edit mode"
+                          title="Chế độ chỉnh sửa hàng loạt"
                         >
                           <ListPlus size={12}/>
                           {bulkEditMode ? 'Tắt Bulk' : 'Bulk Edit'}
@@ -1095,7 +1095,7 @@ const Timekeeping: React.FC = () => {
                                   }
                                 }}
                                 className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-[9px] font-bold hover:bg-emerald-200"
-                                title="Fill giờ chính từ dòng đầu tiên"
+                                title="Điền giờ chính từ dòng đầu tiên"
                               >
                                 Fill Giờ
                               </button>
@@ -1107,7 +1107,7 @@ const Timekeeping: React.FC = () => {
                                   }
                                 }}
                                 className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-[9px] font-bold hover:bg-blue-200"
-                                title="Fill down giờ chính"
+                                title="Điền xuống giờ chính"
                               >
                                 Fill ↓
                               </button>

@@ -235,7 +235,7 @@ const Dashboard: React.FC = () => {
          <div className="flex items-center gap-4 bg-white/5 p-6 rounded-[32px] border border-white/10 backdrop-blur-md relative z-10 shrink-0">
              <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-3">
-                    <Activity size={20} className="text-indigo-400"/><span className="text-sm font-black text-white uppercase tracking-widest">System Online</span>
+                    <Activity size={20} className="text-indigo-400"/><span className="text-sm font-black text-white uppercase tracking-widest">Hệ Thống Hoạt Động</span>
                 </div>
                 <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 w-[85%]"></div></div>
              </div>
@@ -300,7 +300,7 @@ const Dashboard: React.FC = () => {
                           <div className="w-16 h-16 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-lg"><Clock size={32}/></div>
                           <div className="text-left">
                               <h3 className="text-xl font-black text-amber-900 uppercase tracking-tight">Cảnh báo: Duyệt công còn sót</h3>
-                              <p className="text-sm text-amber-700 font-medium mt-1">Có {adminStats.pendingAttendanceDays.length} ngày đang chờ bạn hoặc Manager phê duyệt để chốt lương.</p>
+                              <p className="text-sm text-amber-700 font-medium mt-1">Có {adminStats.pendingAttendanceDays.length} ngày đang chờ bạn hoặc Trưởng phòng phê duyệt để chốt lương.</p>
                           </div>
                       </div>
                       <div className="flex gap-4">
@@ -308,7 +308,7 @@ const Dashboard: React.FC = () => {
                             onClick={() => navigate(`/timekeeping?tab=ATTENDANCE&date=${adminStats.pendingAttendanceDays[0]}`)}
                             className="px-8 py-3 bg-amber-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-amber-200"
                           >
-                            Xử lý ngày gần nhất: {adminStats.pendingAttendanceDays[0]}
+                            Xử lý ngày gần nhất: {formatDate(adminStats.pendingAttendanceDays[0])}
                           </button>
                       </div>
                   </div>
@@ -429,7 +429,7 @@ const Dashboard: React.FC = () => {
                   <div className="bg-white p-10 rounded-[48px] border border-slate-100 shadow-xl group hover:border-indigo-300 transition-all hover:shadow-indigo-500/10 text-left text-left text-left text-left text-left">
                       <div className="p-4 bg-indigo-50 text-indigo-600 rounded-[28px] w-fit shadow-md text-left text-left text-left text-left text-left text-left"><Clock size={32}/></div>
                       <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mt-8 text-left text-left text-left text-left text-left text-left">Công lũy kế</p>
-                      <h3 className="text-5xl font-black text-slate-900 mt-3 tracking-tighter text-left text-left text-left text-left text-left">{personalStats.totalWorkDays.toFixed(1)} <span className="text-sm text-slate-400 font-bold uppercase tracking-widest ml-1 text-left text-left text-left text-left text-left text-left text-left">Days</span></h3>
+                      <h3 className="text-5xl font-black text-slate-900 mt-3 tracking-tighter text-left text-left text-left text-left text-left">{personalStats.totalWorkDays.toFixed(1)} <span className="text-sm text-slate-400 font-bold uppercase tracking-widest ml-1 text-left text-left text-left text-left text-left text-left text-left">Ngày</span></h3>
                   </div>
                   <div className="bg-emerald-600 p-10 rounded-[48px] shadow-2xl text-white group relative overflow-hidden hover:-translate-y-1 transition-all text-left text-left text-left text-left text-left text-left">
                       <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-bl-full -mr-16 -mt-16 transition-transform group-hover:scale-110 duration-700 text-left text-left text-left text-left text-left"></div>

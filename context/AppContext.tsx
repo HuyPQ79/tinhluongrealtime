@@ -67,6 +67,7 @@ interface AppContextType {
   showToast: (msg: string, type?: any) => void;
   formatCurrency: (val: number) => string;
   formatDateTime: (d: string) => string;
+  formatDate: (d: string) => string;
   getStandardWorkDays: (month: string) => number;
   canViewUser: (target: User) => boolean;
 
@@ -498,7 +499,36 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
 
   // --- UTILS & HELPERS ---
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
-  const formatDateTime = (d: string) => new Date(d).toLocaleString('vi-VN');
+  
+  // Format date time theo dd/mm/yyyy HH:mm
+  const formatDateTime = (d: string) => {
+    if (!d) return '';
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return d;
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
+  };
+  
+  // Format date theo dd/mm/yyyy
+  const formatDate = (d: string) => {
+    if (!d) return '';
+    // Nếu d đã là format YYYY-MM-DD, parse trực tiếp
+    if (d.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year, month, day] = d.split('-');
+      return `${day}/${month}/${year}`;
+    }
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return d;
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+  
   const getStandardWorkDays = (m: string) => systemConfig.standardWorkDays || 26;
   const canViewUser = (t: User) => true; // Logic quyền hạn có thể mở rộng sau
 
@@ -625,7 +655,7 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
         systemRoles, approvalWorkflows,
         
         login, logout, saveAttendance, updateUser, calculateMonthlySalary,
-        showToast, formatCurrency, formatDateTime, getStandardWorkDays, canViewUser,
+        showToast, formatCurrency, formatDateTime, formatDate, getStandardWorkDays, canViewUser,
         
         markNotiRead, updateSalaryStatus, canActionSalary, addSalaryAdjustment, deleteSalaryAdjustment,
         updateAdvancePayment, savePieceworkConfigs, addDailyWorkItem, updateDailyWorkItem, deleteDailyWorkItem,
