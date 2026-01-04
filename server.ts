@@ -103,12 +103,12 @@ const authenticateToken = async (req: AuthRequest, res: express.Response, next: 
       if (user) {
         const { password, ...userData } = user;
         // Parse JSON fields
-        let assignedDeptIds = [];
+        let assignedDeptIds: string[] = [];
         try {
           if (userData.assignedDeptIds && typeof userData.assignedDeptIds === 'string') {
-            assignedDeptIds = JSON.parse(userData.assignedDeptIds);
+            assignedDeptIds = JSON.parse(userData.assignedDeptIds) as string[];
           } else if (Array.isArray(userData.assignedDeptIds)) {
-            assignedDeptIds = userData.assignedDeptIds;
+            assignedDeptIds = userData.assignedDeptIds as string[];
           }
         } catch (e) {}
         // Đảm bảo currentDeptId được include
@@ -902,7 +902,7 @@ app.post('/api/config/system', async (req: AuthRequest, res) => {
     });
     
     // Ghi audit log
-    const configChanges = [];
+    const configChanges: string[] = [];
     if (body.baseSalary !== undefined) configChanges.push(`Lương cơ bản: ${body.baseSalary.toLocaleString('vi-VN')}`);
     if (body.standardWorkDays !== undefined) configChanges.push(`Ngày công chuẩn: ${body.standardWorkDays}`);
     if (body.systemRoles !== undefined) configChanges.push(`Vai trò hệ thống: ${Array.isArray(body.systemRoles) ? body.systemRoles.length : 0} vai trò`);
@@ -1062,12 +1062,12 @@ app.get('/api/users', async (req: AuthRequest, res) => {
                 }
             } catch (e) {}
             
-            let assignedDeptIds = [];
+            let assignedDeptIds: string[] = [];
             try {
                 if (rest.assignedDeptIds && typeof rest.assignedDeptIds === 'string') {
-                    assignedDeptIds = JSON.parse(rest.assignedDeptIds);
+                    assignedDeptIds = JSON.parse(rest.assignedDeptIds) as string[];
                 } else if (Array.isArray(rest.assignedDeptIds)) {
-                    assignedDeptIds = rest.assignedDeptIds;
+                    assignedDeptIds = rest.assignedDeptIds as string[];
                 } else if (rest.currentDeptId) {
                     assignedDeptIds = [rest.currentDeptId];
                 }
@@ -1075,12 +1075,12 @@ app.get('/api/users', async (req: AuthRequest, res) => {
                 if (rest.currentDeptId) assignedDeptIds = [rest.currentDeptId];
             }
             
-            let activeAssignments = [];
+            let activeAssignments: any[] = [];
             try {
                 if (rest.activeAssignments && typeof rest.activeAssignments === 'string') {
-                    activeAssignments = JSON.parse(rest.activeAssignments);
+                    activeAssignments = JSON.parse(rest.activeAssignments) as any[];
                 } else if (Array.isArray(rest.activeAssignments)) {
-                    activeAssignments = rest.activeAssignments;
+                    activeAssignments = rest.activeAssignments as any[];
                 }
             } catch (e) {}
             
@@ -1195,7 +1195,7 @@ app.post('/api/attendance', async (req: AuthRequest, res) => {
         const data = req.body; 
         const currentUser = req.currentUser;
         const records = Array.isArray(data) ? data : [data]; 
-        const results = [];
+        const results: any[] = [];
         const monthsToRecalculate = new Set<string>();
         
         for (const rec of records) {
@@ -1567,7 +1567,7 @@ app.post('/api/salary-records/calculate', async (req: AuthRequest, res) => {
     const pitSteps = (systemConfig?.pitSteps as any) || configExtra.pitSteps || [];
     
     const Ctc = calculateCtc(year, monthNum);
-    const results = [];
+    const results: any[] = [];
     
     for (const user of users) {
       // Tính các chỉ số công từ attendance
@@ -2480,13 +2480,13 @@ app.post('/api/system/reload-formulas-variables', async (req: AuthRequest, res) 
         update: {
           name: v.name,
           description: v.description || null,
-          group: v.group || null
+          group: v.group || ''
         },
         create: {
           code: v.code,
           name: v.name,
           description: v.description || null,
-          group: v.group || null
+          group: v.group || ''
         }
       });
       variablesCount++;
