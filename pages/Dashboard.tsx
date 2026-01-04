@@ -243,11 +243,6 @@ const Dashboard: React.FC = () => {
       return acc + calculateDailySalary(user.id, endDate);
     }, 0);
 
-    // Tính tổng lương trong ngày cho tất cả nhân viên được chọn
-    const totalDailySalary = targetUsers.reduce((acc, user) => {
-      return acc + calculateDailySalary(user.id, endDate);
-    }, 0);
-
     return { totalStaff, staffWorkingCount, totalNetSalary, bigErrors, totalPenaltyAmount, pendingAttendanceDays, totalDailySalary };
   }, [viewMode, allUsers, dailyAttendance, salaryRecords, evaluationRequests, currentUser, departments, endDate, startDate, criteriaList, criteriaGroups, selectedDeptIds, dailyWorkCatalog, getStandardWorkDays]);
 
