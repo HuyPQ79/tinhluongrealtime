@@ -261,7 +261,12 @@ const Dashboard: React.FC = () => {
                         <div className="absolute top-full mt-3 right-0 w-80 bg-white rounded-[32px] shadow-2xl border border-slate-100 z-[100] p-6 animate-fade-in-up text-left">
                             <div className="flex justify-between items-center mb-5 pb-3 border-b border-slate-50">
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Đơn vị phụ trách</span>
-                                <button onClick={selectAllDepts} className="text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase">Tất cả</button>
+                                <div className="flex items-center gap-3">
+                                    <button onClick={selectAllDepts} className="text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase transition-colors">Tất cả</button>
+                                    {selectedDeptIds.length > 0 && (
+                                        <button onClick={clearDepts} className="text-[10px] font-black text-rose-600 hover:text-rose-800 uppercase transition-colors">Bỏ chọn</button>
+                                    )}
+                                </div>
                             </div>
                             <div className="max-h-72 overflow-y-auto space-y-1 pr-1 custom-scrollbar text-left">
                                 {departments.filter(d => hasRole(currentUser!, [UserRole.ADMIN, UserRole.BAN_LANH_DAO]) || d.managerId === currentUser?.id || d.blockDirectorId === currentUser?.id || d.hrId === currentUser?.id || currentUser?.assignedDeptIds?.includes(d.id)).map(d => (
