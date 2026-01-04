@@ -21,8 +21,8 @@ import { hasRole } from '../utils/rbac';
 const Dashboard: React.FC = () => {
   const { 
     allUsers, departments, salaryRecords, dailyAttendance, evaluationRequests,
-    currentUser, formatDateTime, formatCurrency, criteriaList, criteriaGroups, annualBonusPolicies,
-    calculateMonthlySalary
+    currentUser, formatDateTime, formatDate, formatCurrency, criteriaList, criteriaGroups, annualBonusPolicies,
+    calculateMonthlySalary, dailyWorkCatalog, systemConfig, getStandardWorkDays
   } = useAppContext();
   
   const navigate = useNavigate();
@@ -136,6 +136,60 @@ const Dashboard: React.FC = () => {
 
   const clearDepts = () => setSelectedDeptIds([]);
 
+  // Tính lương trong ngày từ attendance record
+  const calculateDailySalary = (userId: string, date: string): number => {
+    const attendance = dailyAttendance.find(a => a.userId === userId && a.date === date && a.status === RecordStatus.APPROVED);
+    if (!attendance) return 0;
+    
+    const user = allUsers.find(u => u.id === userId);
+    if (!user) return 0;
+    
+    const monthStr = date.substring(0, 7);
+    const salaryRecord = salaryRecords.find(r => r.userId === userId && r.date === monthStr);
+    const Ctc = getStandardWorkDays(monthStr);
+    const LCB_dm = Number(salaryRecord?.LCB_dm || 0);
+    
+    let dailySalary = 0;
+    
+    // Tính lương chính theo loại công
+    if (attendance.type === AttendanceType.TIME) {
+      // Lương thời gian: (LCB_dm / Ctc) * (hours / 8)
+      dailySalary = (LCB_dm / Ctc) * (attendance.hours / 8);
+    } else if (attendance.type === AttendanceType.PIECEWORK) {
+      // Lương khoán: output * unitPrice
+      const unitPrice = attendance.pieceworkUnitPrice ? Number(attendance.pieceworkUnitPrice) : (user.pieceworkUnitPrice || 0);
+      dailySalary = (attendance.output || 0) * unitPrice;
+    } else if (attendance.type === AttendanceType.DAILY) {
+      // Lương công nhật: dailyWorkItem.unitPrice
+      const dailyWorkItem = dailyWorkCatalog.find(item => item.id === attendance.dailyWorkItemId);
+      dailySalary = dailyWorkItem?.unitPrice ? Number(dailyWorkItem.unitPrice) : 0;
+    } else if ([AttendanceType.HOLIDAY, AttendanceType.PAID_LEAVE, AttendanceType.MODE].includes(attendance.type)) {
+      // Nghỉ có lương: (LCB_dm / Ctc)
+      dailySalary = LCB_dm / Ctc;
+    }
+    
+    // Tính lương tăng ca
+    if (attendance.overtimeHours > 0) {
+      const otRate = attendance.otRate || 1.5;
+      if (attendance.isOvertimeWithOutput) {
+        // Tăng ca có sản lượng: tính theo lương khoán
+        const unitPrice = attendance.pieceworkUnitPrice ? Number(attendance.pieceworkUnitPrice) : (user.pieceworkUnitPrice || 0);
+        const otOutput = attendance.output || 0;
+        dailySalary += otOutput * unitPrice * otRate;
+      } else {
+        // Tăng ca thời gian: (LCB_dm / Ctc / 8) * overtimeHours * otRate
+        dailySalary += (LCB_dm / Ctc / 8) * attendance.overtimeHours * otRate;
+      }
+    }
+    
+    // Áp dụng tỷ lệ thử việc nếu có
+    if (user.probationRate && user.probationRate < 100) {
+      dailySalary = dailySalary * (user.probationRate / 100);
+    }
+    
+    return dailySalary;
+  };
+
   const adminStats = useMemo(() => {
     if (viewMode !== 'ADMIN' || !currentUser) return null;
 
@@ -184,8 +238,18 @@ const Dashboard: React.FC = () => {
             return acc + (criteria.value / 100) * (group.weight / 100) * targetSalary;
         }, 0);
 
-    return { totalStaff, staffWorkingCount, totalNetSalary, bigErrors, totalPenaltyAmount, pendingAttendanceDays };
-  }, [viewMode, allUsers, dailyAttendance, salaryRecords, evaluationRequests, currentUser, departments, endDate, startDate, criteriaList, criteriaGroups, selectedDeptIds]);
+    // Tính tổng lương trong ngày cho tất cả nhân viên được chọn
+    const totalDailySalary = targetUsers.reduce((acc, user) => {
+      return acc + calculateDailySalary(user.id, endDate);
+    }, 0);
+
+    // Tính tổng lương trong ngày cho tất cả nhân viên được chọn
+    const totalDailySalary = targetUsers.reduce((acc, user) => {
+      return acc + calculateDailySalary(user.id, endDate);
+    }, 0);
+
+    return { totalStaff, staffWorkingCount, totalNetSalary, bigErrors, totalPenaltyAmount, pendingAttendanceDays, totalDailySalary };
+  }, [viewMode, allUsers, dailyAttendance, salaryRecords, evaluationRequests, currentUser, departments, endDate, startDate, criteriaList, criteriaGroups, selectedDeptIds, dailyWorkCatalog, getStandardWorkDays]);
 
   const personalStats = useMemo(() => {
     const userAttendance = dailyAttendance.filter(a => a.userId === currentUser?.id && a.date >= startDate && a.date <= endDate);
@@ -215,8 +279,11 @@ const Dashboard: React.FC = () => {
         reservedBonusLeft = Math.max(0, policyLimit - totalReservedPenalties); // Trừ lùi phạt thưởng treo
     }
 
-    return { totalWorkDays, tempNetSalary, totalPenaltyAccumulated, reservedBonusLeft };
-  }, [dailyAttendance, evaluationRequests, currentUser, salaryRecords, endDate, startDate, criteriaList, criteriaGroups]);
+    // Tính lương trong ngày (ngày endDate)
+    const dailySalary = currentUser ? calculateDailySalary(currentUser.id, endDate) : 0;
+
+    return { totalWorkDays, tempNetSalary, totalPenaltyAccumulated, reservedBonusLeft, dailySalary };
+  }, [dailyAttendance, evaluationRequests, currentUser, salaryRecords, endDate, startDate, criteriaList, criteriaGroups, allUsers, dailyWorkCatalog, getStandardWorkDays]);
 
   return (
     <div className="space-y-10 pb-20 animate-fade-in text-left">
@@ -314,7 +381,7 @@ const Dashboard: React.FC = () => {
                   </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                   <div className="bg-white p-8 rounded-[40px] shadow-xl border border-slate-100 relative group overflow-hidden transition-all hover:-translate-y-1">
                       <div className="absolute right-0 top-0 w-40 h-40 bg-indigo-50 rounded-bl-full opacity-60 -mr-16 -mt-16 group-hover:scale-110 transition-transform duration-700"></div>
                       <div className="p-4 bg-indigo-50 text-indigo-600 rounded-[24px] w-fit relative z-10"><Users size={32}/></div>
@@ -346,6 +413,13 @@ const Dashboard: React.FC = () => {
                         <h3 className="text-4xl font-black mt-2 tabular-nums tracking-tighter">{formatCurrency(adminStats.totalPenaltyAmount)}</h3>
                         <div className="mt-8 px-4 py-2 bg-white/10 rounded-2xl border border-white/10 w-fit text-[10px] font-black uppercase flex items-center gap-2"><AlertCircle size={14}/> Phát sinh {adminStats.bigErrors.length} lỗi trọng yếu</div>
                       </div>
+                  </div>
+                  <div className="bg-blue-600 p-8 rounded-[40px] shadow-2xl text-white relative group overflow-hidden transition-all hover:-translate-y-1">
+                      <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-bl-full -mr-16 -mt-16 transition-transform group-hover:scale-110 duration-700"></div>
+                      <div className="p-4 bg-white/20 text-blue-100 rounded-[24px] w-fit shadow-lg"><DollarSign size={32}/></div>
+                      <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest mt-10">LƯƠNG TRONG NGÀY</p>
+                      <h3 className="text-4xl font-black mt-2 tabular-nums tracking-tighter">{formatCurrency(adminStats.totalDailySalary)}</h3>
+                      <div className="mt-8 flex items-center gap-2 text-blue-100 font-bold text-[10px] uppercase tracking-widest"><Calendar size={14}/> Ngày {formatDate(endDate)}</div>
                   </div>
               </div>
 
@@ -411,7 +485,17 @@ const Dashboard: React.FC = () => {
                    </div>
                    <div className="text-center xl:text-left relative z-10 flex-1 text-left text-left">
                        <div className="flex flex-col xl:flex-row xl:items-end gap-5 text-left text-left">
-                           <h2 className="text-6xl font-black text-slate-900 tracking-tighter leading-none text-left text-left">{currentUser?.name.split(' ').pop()} <span className="text-slate-400 text-3xl font-bold tracking-tight text-left text-left">{currentUser?.name.split(' ').slice(0, -1).join(' ')}</span></h2>
+                           <h2 className="text-6xl font-black text-slate-900 tracking-tighter leading-none text-left text-left">{(() => {
+                             const name = currentUser?.name || '';
+                             // Bỏ phần (Thời gian) hoặc (Khoán) nếu có
+                             const cleanName = name.replace(/\s*\(Thời gian\)/gi, '').replace(/\s*\(Khoán\)/gi, '').replace(/\s*\(Thời Gian\)/gi, '');
+                             const nameParts = cleanName.split(' ');
+                             return nameParts.length > 0 ? (
+                               <>
+                                 {nameParts.pop()} <span className="text-slate-400 text-3xl font-bold tracking-tight text-left text-left">{nameParts.join(' ')}</span>
+                               </>
+                             ) : cleanName;
+                           })()}</h2>
                            <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-5 py-2.5 rounded-full uppercase tracking-widest mb-1 border border-indigo-100 shadow-sm text-left text-left">{currentUser?.currentPosition}</span>
                        </div>
                        <div className="mt-12 flex flex-wrap justify-center xl:justify-start gap-12 text-left text-left text-left">
@@ -425,7 +509,7 @@ const Dashboard: React.FC = () => {
                    </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 text-left text-left text-left text-left text-left">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 text-left text-left text-left text-left text-left">
                   <div className="bg-white p-10 rounded-[48px] border border-slate-100 shadow-xl group hover:border-indigo-300 transition-all hover:shadow-indigo-500/10 text-left text-left text-left text-left text-left">
                       <div className="p-4 bg-indigo-50 text-indigo-600 rounded-[28px] w-fit shadow-md text-left text-left text-left text-left text-left text-left"><Clock size={32}/></div>
                       <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mt-8 text-left text-left text-left text-left text-left text-left">Công lũy kế</p>
@@ -436,6 +520,13 @@ const Dashboard: React.FC = () => {
                       <div className="p-4 bg-white/20 text-emerald-100 rounded-[28px] w-fit shadow-xl text-left text-left text-left text-left text-left text-left text-left text-left"><Wallet size={32}/></div>
                       <p className="text-[11px] font-black text-emerald-100 uppercase tracking-[0.2em] mt-8 opacity-80 text-left text-left text-left text-left text-left text-left text-left">Lương Thực Lĩnh</p>
                       <h3 className="text-4xl font-black mt-3 tabular-nums tracking-tighter text-left text-left text-left text-left text-left text-left text-left text-left">{formatCurrency(personalStats.tempNetSalary)}</h3>
+                  </div>
+                  <div className="bg-blue-600 p-10 rounded-[48px] shadow-2xl text-white group relative overflow-hidden hover:-translate-y-1 transition-all text-left text-left text-left text-left text-left text-left">
+                      <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-bl-full -mr-16 -mt-16 transition-transform group-hover:scale-110 duration-700"></div>
+                      <div className="p-4 bg-white/20 text-blue-100 rounded-[28px] w-fit shadow-xl"><DollarSign size={32}/></div>
+                      <p className="text-[11px] font-black text-blue-200 uppercase tracking-[0.2em] mt-8 opacity-80">Lương Trong Ngày</p>
+                      <h3 className="text-4xl font-black mt-3 tabular-nums tracking-tighter">{formatCurrency(personalStats.dailySalary)}</h3>
+                      <div className="mt-8 flex items-center gap-2 text-blue-100 font-bold text-[10px] uppercase tracking-widest"><Calendar size={14}/> {formatDate(endDate)}</div>
                   </div>
                   <div className="bg-white p-10 rounded-[48px] border border-slate-100 shadow-xl border-l-8 border-l-rose-500 hover:shadow-rose-500/10 transition-all text-left text-left text-left text-left text-left text-left text-left">
                       <div className="p-4 bg-rose-50 text-rose-600 rounded-[28px] w-fit shadow-md text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left"><AlertCircle size={32}/></div>
